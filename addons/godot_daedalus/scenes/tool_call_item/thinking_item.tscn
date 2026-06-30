@@ -14,7 +14,7 @@ expand_mode = 3
 stretch_mode = 5
 
 [node name="MessageLabel" type="MarkdownLabel" parent="." unique_id=758447830]
-text = "Thnking"
+text = "Thinking"
 content_margin = 0
 context_menu_enabled = true
 streaming_enabled = true

@@ -1,0 +1,19 @@
+[gd_scene format=3 uid="uid://dxmloi863owr8"]
+
+[ext_resource type="Texture2D" uid="uid://ctpm83h33rpbq" path="res://addons/godot_daedalus/assets/icons/search.svg" id="1_c3w07"]
+
+[node name="ToolSearchItem" type="HBoxContainer" unique_id=462076687]
+
+[node name="Icon" type="TextureRect" parent="." unique_id=412168649]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+texture = ExtResource("1_c3w07")
+expand_mode = 3
+stretch_mode = 5
+
+[node name="DetailsLabel" type="Label" parent="." unique_id=422785196]
+layout_mode = 2
+theme_type_variation = &"LabelNoMargin"
+text = "Number of matches: {count}"

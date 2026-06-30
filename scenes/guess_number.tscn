@@ -1,0 +1,46 @@
+[gd_scene load_steps=3 format=3]
+[ext_resource type="Script" path="res://scripts/guess_number.gd" id="1_script"]
+
+[node name="GuessNumber" type="Control"]
+script = ExtResource("1_script")
+
+[node name="TargetLabel" type="Label" parent="."]
+text = "请输入 1-100 之间的数字"
+position = Vector2(150, 50)
+horizontal_alignment = 1
+vertical_alignment = 1
+unique_name_in_owner = true
+
+[node name="FeedbackLabel" type="Label" parent="."]
+text = ""
+position = Vector2(150, 110)
+horizontal_alignment = 1
+unique_name_in_owner = true
+
+[node name="AttemptsLabel" type="Label" parent="."]
+text = "已猜次数：0 / 7"
+position = Vector2(150, 150)
+horizontal_alignment = 1
+unique_name_in_owner = true
+
+[node name="InputField" type="LineEdit" parent="."]
+position = Vector2(100, 200)
+size = Vector2(200, 40)
+placeholder_text = "输入数字..."
+unique_name_in_owner = true
+
+[node name="GuessButton" type="Button" parent="."]
+text = "猜！"
+position = Vector2(100, 260)
+size = Vector2(90, 40)
+unique_name_in_owner = true
+
+[node name="RestartButton" type="Button" parent="."]
+text = "重新开始"
+position = Vector2(210, 260)
+size = Vector2(90, 40)
+unique_name_in_owner = true
+
+[connection signal="pressed" from="GuessButton" to="." method="_on_guess_pressed"]
+[connection signal="pressed" from="RestartButton" to="." method="_on_restart_pressed"]
+[connection signal="text_submitted" from="InputField" to="." method="_on_input_text_entered"]

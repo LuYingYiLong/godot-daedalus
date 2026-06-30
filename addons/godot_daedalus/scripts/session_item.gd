@@ -3,6 +3,7 @@ extends Button
 
 @onready var title_label: Label = %TitleLabel
 @onready var loader_icon: TextureRect = %LoaderIcon
+@onready var archive_button: Button = %ArchiveButton
 @onready var animation_player: AnimationPlayer = %AnimationPlayer
 @onready var relative_time_label: Label = %RelativeTimeLabel
 
@@ -23,3 +24,11 @@ func set_loading(is_loading: bool) -> void:
 		animation_player.play("loading")
 	else:
 		animation_player.stop()
+
+
+func _on_mouse_entered() -> void:
+	archive_button.show()
+
+
+func _on_mouse_exited() -> void:
+	archive_button.hide()

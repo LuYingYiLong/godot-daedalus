@@ -8,6 +8,7 @@ oversampling_override = 1.0
 title = "Daedalus Settings"
 initial_position = 2
 size = Vector2i(655, 128)
+visible = true
 maximize_disabled = false
 force_native = true
 min_size = Vector2i(128, 128)
@@ -31,6 +32,7 @@ layout_mode = 2
 text = "Provider"
 
 [node name="ProviderOptionButton" type="OptionButton" parent="GridContainer" unique_id=840726840]
+unique_name_in_owner = true
 layout_mode = 2
 selected = 0
 item_count = 1
@@ -46,12 +48,14 @@ layout_mode = 2
 size_flags_horizontal = 3
 
 [node name="DeepseekAPIKeyLineEdit" type="LineEdit" parent="GridContainer/HBoxContainer" unique_id=1108202873]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 caret_blink = true
 secret = true
 
 [node name="ClearDeepseekAPIKeyButton" type="Button" parent="GridContainer/HBoxContainer" unique_id=1646854023]
+unique_name_in_owner = true
 layout_mode = 2
 icon = ExtResource("2_w6r0i")
 

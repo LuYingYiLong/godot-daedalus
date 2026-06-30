@@ -31,10 +31,13 @@ const APPROVAL_MODE_NAMES: Array[String] = [
 	"Read Only"
 ]
 
+@onready var workspace_filter_button: OptionButton = %WorkspaceFilterButton
+@onready var search_session_line_edit: LineEdit = %SearchSessionLineEdit
 @onready var session_option_button: OptionButton = %SessionOptionButton
 @onready var create_new_session_button: Button = %CreateNewSessionButton
 @onready var context_length_button: Button = %ContextLengthButton
 @onready var session_list_viewer: VBoxContainer = %SessionListViewer
+@onready var session_list: VBoxContainer = %SessionList
 @onready var background_context_viewer: VBoxContainer = %BackgroundContextViewer
 @onready var scroll_container: ScrollContainer = %ScrollContainer
 @onready var background_context_container: VBoxContainer = %BackgroundContextContainer
@@ -49,6 +52,8 @@ const APPROVAL_MODE_NAMES: Array[String] = [
 @onready var approval_title_label: MarkdownLabel = %ApprovalTitleLabel
 @onready var approval_description_label: MarkdownLabel = %ApprovalDescriptionLabel
 @onready var boot_splash: CenterContainer = %BootSplash
+@onready var todo_list: FoldableContainer = %TodoList
+@onready var todo_container: VBoxContainer = %TodoContainer
 
 var socket: WebSocketPeer = WebSocketPeer.new()
 var socket_ready: bool
@@ -60,8 +65,15 @@ var active_session_id: String
 var pending_chat_text: String
 var pending_approval_id: String
 var sessions_by_id: Dictionary[String, Dictionary]
-var tool_items_by_name: Dictionary[String, Node]
+var session_ids_in_order: Array[String]
+var workspaces_by_id: Dictionary[String, Dictionary]
+var selected_workspace_filter: String
+var session_search_text: String
+var tool_items_by_call_id: Dictionary[String, Node]
 var active_assistant_item: Node
+var active_thinking_item: Node
+var active_assistant_text: String
+var last_todo_signature: String
 var provider_config_status: Dictionary
 
 
@@ -95,7 +107,24 @@ func _process(_delta: float) -> void:
 		_retry_backend_connection()
 
 
+func _input(event: InputEvent) -> void:
+	if not (event is InputEventKey and event.pressed):
+		return
+	if not text_edit.has_focus():
+		return
+
+	if event.keycode == KEY_ENTER:
+		if event.shift_pressed:
+			return
+		_on_send_button_pressed()
+		accept_event()
+
+
 func _setup_options() -> void:
+	workspace_filter_button.clear()
+	workspace_filter_button.add_item("All", 0)
+	workspace_filter_button.set_item_metadata(0, "")
+
 	model_button.clear()
 	for index: int in range(MODEL_IDS.size()):
 		model_button.add_item(MODEL_NAMES[index], index)
@@ -162,12 +191,10 @@ func _on_socket_opened() -> void:
 	status_button.icon = CONNECTED_ICON
 	status_button.tooltip_text = "Connected"
 	boot_splash.hide()
-	session_list_viewer.show()
+	_show_session_list_viewer()
 	text_edit.show()
 	_send_environment_config()
 	_load_provider_config()
-	_send_request("session.list", {}, "session-list")
-	_send_request("session.info", {}, "session-info")
 
 
 func _on_boot_splash_reconnect_requested() -> void:
@@ -198,18 +225,26 @@ func _get_selected_model_id() -> String:
 
 
 func _on_back_button_pressed() -> void:
-	background_context_viewer.visible = not background_context_viewer.visible
-	session_list_viewer.visible = not session_list_viewer.visible
+	if background_context_viewer.visible:
+		_show_session_list_viewer()
+	else:
+		_show_background_context_viewer()
 
 
 func _show_session_list_viewer() -> void:
 	session_list_viewer.show()
 	background_context_viewer.hide()
+	workspace_filter_button.show()
+	search_session_line_edit.show()
+	session_option_button.hide()
 
 
 func _show_background_context_viewer() -> void:
 	session_list_viewer.hide()
 	background_context_viewer.show()
+	workspace_filter_button.hide()
+	search_session_line_edit.hide()
+	session_option_button.show()
 
 
 func _on_create_new_session_button_pressed() -> void:
@@ -241,9 +276,8 @@ func _on_send_button_pressed() -> void:
 func _on_stop_button_pressed() -> void:
 	active_stream_id = ""
 	active_assistant_item = null
-	send_button.visible = true
-	stop_button.visible = false
-	_update_send_state()
+	active_assistant_text = ""
+	_set_streaming_state(false)
 
 
 func _on_approve_button_pressed() -> void:
@@ -254,9 +288,8 @@ func _on_approve_button_pressed() -> void:
 	background_context_container.add_child(active_assistant_item)
 	active_assistant_item.call("clear_message")
 	active_stream_id = _send_request("approval.approve", { "approvalId": pending_approval_id }, "approval-approve")
-	send_button.visible = false
-	stop_button.visible = true
-	_update_send_state()
+	active_assistant_text = ""
+	_set_streaming_state(true)
 	_scroll_to_bottom()
 	approval_dialog.visible = false
 
@@ -277,7 +310,11 @@ func _create_session(title_text: String) -> void:
 	if not _is_socket_open():
 		return
 
-	_send_request("session.create", { "title": title_text }, "session-create")
+	var params: Dictionary = { "title": title_text }
+	if not selected_workspace_filter.is_empty():
+		params["workspaceId"] = selected_workspace_filter
+
+	_send_request("session.create", params, "session-create")
 
 
 func _open_session(session_id: String) -> void:
@@ -299,6 +336,8 @@ func _send_chat_text(message_text: String) -> void:
 	active_assistant_item = ASSISTANT_MARKDOWN_ITEM_SCENE.instantiate()
 	background_context_container.add_child(active_assistant_item)
 	active_assistant_item.call("clear_message")
+	active_assistant_text = ""
+	_clear_todo_items()
 
 	request_id += 1
 	active_stream_id = "daedalus-chat-%d" % request_id
@@ -310,20 +349,22 @@ func _send_chat_text(message_text: String) -> void:
 			"message": message_text,
 			"promptId": "godot.assistant",
 			"options": {
-				"stream": true
+				"stream": true,
+				"toolBudget": "project_edit"
 			}
 		}
 	}
 
 	var send_error: Error = socket.send_text(JSON.stringify(payload))
 	if send_error != OK:
+		active_stream_id = ""
+		active_assistant_item = null
+		_set_streaming_state(false)
 		return
 
 	_scroll_to_bottom()
 	text_edit.clear()
-	send_button.visible = false
-	stop_button.visible = true
-	_update_send_state()
+	_set_streaming_state(true)
 
 
 func _make_session_title(message_text: String) -> String:
@@ -384,6 +425,12 @@ func _handle_message(message: Dictionary) -> void:
 func _handle_response(message: Dictionary) -> void:
 	var ok: bool = bool(message.get("ok", false))
 	if not ok:
+		if str(message.get("id", "")) == active_stream_id:
+			_show_response_error(message)
+			active_stream_id = ""
+			active_assistant_item = null
+			active_assistant_text = ""
+			_set_streaming_state(false)
 		return
 
 	var result: Variant = message.get("result", {})
@@ -391,13 +438,16 @@ func _handle_response(message: Dictionary) -> void:
 		return
 
 	var result_dictionary: Dictionary = result as Dictionary
-	if result_dictionary.has("sessions"):
+	if result_dictionary.has("workspaces"):
+		_update_workspace_list(result_dictionary)
+	elif result_dictionary.has("sessions"):
 		_update_session_list(result_dictionary)
 	elif result_dictionary.has("keyStorage") and result_dictionary.has("configured"):
 		_apply_provider_config_status(result_dictionary)
 	elif result_dictionary.has("id") and result_dictionary.has("title") and result_dictionary.has("createdAt"):
 		_apply_session_metadata(result_dictionary)
 		_clear_chat_items()
+		_send_request("workspace.list", {}, "workspace-list")
 		_send_request("session.list", {}, "session-list")
 
 		if not pending_chat_text.is_empty():
@@ -411,11 +461,14 @@ func _handle_response(message: Dictionary) -> void:
 		_clear_chat_items()
 		_show_background_context_viewer()
 		_render_session_messages(result_dictionary.get("messages", []))
+		_send_request("workspace.list", {}, "workspace-list")
 		_send_request("session.info", {}, "session-info")
 	elif bool(result_dictionary.get("configured", false)) and result_dictionary.has("provider"):
 		_update_send_state()
-	#elif bool(result_dictionary.get("configured", false)) and result_dictionary.has("godotProjectPath"):
-		#status_label.text = "Workspace configured"
+	elif bool(result_dictionary.get("configured", false)) and result_dictionary.has("godotProjectPath"):
+		_send_request("workspace.list", {}, "workspace-list")
+		_send_request("session.list", {}, "session-list")
+		_send_request("session.info", {}, "session-info")
 	elif result_dictionary.has("contextWindowTokens"):
 		_update_context_length(result_dictionary)
 	elif bool(result_dictionary.get("saved", false)):
@@ -438,7 +491,10 @@ func _handle_event(message: Dictionary) -> void:
 	var data_dictionary: Dictionary = data as Dictionary
 	if event_name == "ai.delta":
 		if active_assistant_item != null:
-			active_assistant_item.call("append_delta", str(data_dictionary.get("text", "")))
+			var delta_text: String = str(data_dictionary.get("text", ""))
+			active_assistant_text += delta_text
+			active_assistant_item.call("append_delta", delta_text)
+			_update_todo_list_from_text(active_assistant_text)
 			_scroll_to_bottom()
 	elif event_name == "ai.done":
 		if active_assistant_item != null:
@@ -446,9 +502,8 @@ func _handle_event(message: Dictionary) -> void:
 			_scroll_to_bottom()
 		active_assistant_item = null
 		active_stream_id = ""
-		send_button.visible = true
-		stop_button.visible = false
-		_update_send_state()
+		active_assistant_text = ""
+		_set_streaming_state(false)
 		_send_request("session.save", {}, "session-save")
 		_send_request("session.info", {}, "session-info")
 	elif event_name == "ai.paused":
@@ -457,16 +512,20 @@ func _handle_event(message: Dictionary) -> void:
 			_scroll_to_bottom()
 		active_assistant_item = null
 		active_stream_id = ""
-		send_button.visible = true
-		stop_button.visible = false
-		_update_send_state()
+		active_assistant_text = ""
+		_set_streaming_state(false)
+	elif event_name == "ai.thinking.delta":
+		_append_thinking_event(str(data_dictionary.get("text", "")))
+	elif event_name == "ai.thinking.done":
+		active_thinking_item = null
 	elif event_name == "tool.call":
 		_add_tool_event(data_dictionary)
 	elif event_name == "tool.result":
-		_append_tool_event(data_dictionary, "Result chars: %d" % int(data_dictionary.get("resultChars", 0)))
+		_append_tool_event(data_dictionary)
 	elif event_name == "tool.error":
-		_append_tool_event(data_dictionary, str(data_dictionary.get("message", "")))
+		_append_tool_event(data_dictionary)
 	elif event_name == "tool.approval_required":
+		_add_tool_event(data_dictionary)
 		_show_approval_dialog(data_dictionary)
 	elif event_name == "tool.approved" or event_name == "tool.rejected":
 		pending_approval_id = ""
@@ -479,11 +538,11 @@ func _is_global_event(event_name: String) -> bool:
 
 func _update_session_list(result: Dictionary) -> void:
 	sessions_by_id.clear()
-	session_option_button.clear()
-	_clear_session_buttons()
+	session_ids_in_order.clear()
 
 	var sessions_value: Variant = result.get("sessions", [])
 	if typeof(sessions_value) != TYPE_ARRAY:
+		_render_session_list()
 		return
 
 	var sessions_array: Array = sessions_value as Array
@@ -497,6 +556,84 @@ func _update_session_list(result: Dictionary) -> void:
 			continue
 
 		sessions_by_id[session_id] = metadata
+		session_ids_in_order.append(session_id)
+
+	_render_session_list()
+
+
+func _update_workspace_list(result: Dictionary) -> void:
+	workspaces_by_id.clear()
+	workspace_filter_button.clear()
+	workspace_filter_button.add_item("All", 0)
+	workspace_filter_button.set_item_metadata(0, "")
+
+	var workspaces_value: Variant = result.get("workspaces", [])
+	var active_value: String = str(result.get("active", ""))
+	if typeof(workspaces_value) == TYPE_ARRAY:
+		var workspaces_array: Array = workspaces_value as Array
+		for item: Variant in workspaces_array:
+			if typeof(item) != TYPE_DICTIONARY:
+				continue
+
+			var workspace: Dictionary = item as Dictionary
+			var workspace_id: String = str(workspace.get("id", ""))
+			if workspace_id.is_empty():
+				continue
+
+			workspaces_by_id[workspace_id] = workspace
+			var filter_text: String = workspace.get("name", "Workspace")
+			if workspace_id == active_value:
+				filter_text = "%s" % filter_text
+			workspace_filter_button.add_item(filter_text)
+			workspace_filter_button.set_item_metadata(workspace_filter_button.get_item_count() - 1, workspace_id)
+
+	_render_session_list()
+
+
+func _render_session_list() -> void:
+	session_option_button.clear()
+	_clear_session_buttons()
+
+	if session_ids_in_order.is_empty():
+		_select_active_session()
+		return
+
+	if not selected_workspace_filter.is_empty():
+		_render_workspace_group(selected_workspace_filter)
+	else:
+		var rendered_workspace_ids: Array[String] = []
+		for session_id: String in session_ids_in_order:
+			var metadata: Dictionary = sessions_by_id.get(session_id, {}) as Dictionary
+			var workspace_id: String = str(metadata.get("workspaceId", ""))
+			if rendered_workspace_ids.has(workspace_id):
+				continue
+
+			rendered_workspace_ids.append(workspace_id)
+			_render_workspace_group(workspace_id)
+
+	_select_active_session()
+
+
+func _render_workspace_group(workspace_id: String) -> void:
+	var matching_session_ids: Array[String] = []
+	for session_id: String in session_ids_in_order:
+		var metadata: Dictionary = sessions_by_id.get(session_id, {}) as Dictionary
+		if str(metadata.get("workspaceId", "")) != workspace_id:
+			continue
+		if not _does_session_match_filters(metadata):
+			continue
+
+		matching_session_ids.append(session_id)
+
+	if matching_session_ids.is_empty():
+		return
+
+	var label: Label = Label.new()
+	label.text = "%s  (%d)" % [_format_workspace_group_text(workspace_id), matching_session_ids.size()]
+	session_list.add_child(label)
+
+	for session_id: String in matching_session_ids:
+		var metadata: Dictionary = sessions_by_id.get(session_id, {}) as Dictionary
 		var title_text: String = str(metadata.get("title", "Untitled"))
 		var updated_at: String = str(metadata.get("updatedAt", ""))
 
@@ -504,15 +641,71 @@ func _update_session_list(result: Dictionary) -> void:
 		session_option_button.set_item_metadata(session_option_button.get_item_count() - 1, session_id)
 
 		var session_item: Button = SESSION_ITEM_SCENE.instantiate() as Button
-		session_list_viewer.add_child(session_item)
+		session_list.add_child(session_item)
 		session_item.call("setup", session_id, title_text, _format_relative_time(updated_at))
 		session_item.pressed.connect(_on_dynamic_session_item_pressed.bind(session_id))
 
-	_select_active_session()
+
+func _does_session_match_filters(metadata: Dictionary) -> bool:
+	if not selected_workspace_filter.is_empty() and str(metadata.get("workspaceId", "")) != selected_workspace_filter:
+		return false
+
+	if session_search_text.is_empty():
+		return true
+
+	var query: String = session_search_text.to_lower()
+	var title_text: String = str(metadata.get("title", "")).to_lower()
+	var workspace_id: String = str(metadata.get("workspaceId", ""))
+	var workspace_text: String = _format_workspace_search_text(workspace_id).to_lower()
+
+	return title_text.contains(query) or workspace_id.to_lower().contains(query) or workspace_text.contains(query)
+
+
+func _format_workspace_group_text(workspace_id: String) -> String:
+	if workspace_id.is_empty():
+		return "No workspace"
+
+	var workspace: Dictionary = workspaces_by_id.get(workspace_id, {}) as Dictionary
+	if workspace.is_empty():
+		return "Unknown workspace: %s" % workspace_id
+
+	return workspace.get("name", "Workspace")
+
+
+func _format_workspace_search_text(workspace_id: String) -> String:
+	if workspace_id.is_empty():
+		return ""
+
+	var workspace: Dictionary = workspaces_by_id.get(workspace_id, {}) as Dictionary
+	if workspace.is_empty():
+		return workspace_id
+
+	return "%s %s" % [str(workspace.get("name", "")), str(workspace.get("rootPath", ""))]
+
+
+func _select_workspace_filter(workspace_id: String) -> void:
+	selected_workspace_filter = workspace_id
+	for index: int in range(workspace_filter_button.get_item_count()):
+		if str(workspace_filter_button.get_item_metadata(index)) == workspace_id:
+			workspace_filter_button.select(index)
+			return
+
+
+func _on_workspace_filter_button_item_selected(index: int) -> void:
+	if index < 0 or index >= workspace_filter_button.get_item_count():
+		return
+
+	selected_workspace_filter = str(workspace_filter_button.get_item_metadata(index))
+	_render_session_list()
+
+
+func _on_search_session_line_edit_text_changed(new_text: String) -> void:
+	session_search_text = new_text.strip_edges()
+	_render_session_list()
 
 
 func _clear_session_buttons() -> void:
-	for child: Node in session_list_viewer.get_children():
+	for child: Node in session_list.get_children():
 		child.queue_free()
 
 
@@ -550,8 +743,11 @@ func _select_active_session() -> void:
 
 
 func _clear_chat_items() -> void:
-	tool_items_by_name.clear()
+	tool_items_by_call_id.clear()
 	active_assistant_item = null
+	active_thinking_item = null
+	active_assistant_text = ""
+	_clear_todo_items()
 	for child: Node in background_context_container.get_children():
 		child.queue_free()
 	_set_context_length_icon(0.0, true)
@@ -590,6 +786,22 @@ func _add_assistant_message_item(message_text: String) -> void:
 	assistant_item.call("setup", message_text)
 
 
+func _show_response_error(message: Dictionary) -> void:
+	var error_value: Variant = message.get("error", {})
+	var error_message: String = "Unknown backend error"
+	if typeof(error_value) == TYPE_DICTIONARY:
+		var error_dictionary: Dictionary = error_value as Dictionary
+		error_message = str(error_dictionary.get("message", error_message))
+
+	if active_assistant_item != null:
+		active_assistant_item.call("append_delta", "\n\n后端返回错误：%s" % error_message)
+		active_assistant_item.call("finish_message")
+	else:
+		_add_assistant_message_item("后端返回错误：%s" % error_message)
+
+	_scroll_to_bottom()
+
+
 func _scroll_to_bottom() -> void:
 	if not is_inside_tree():
 		return
@@ -608,24 +820,57 @@ func _add_system_tool_item(title_text: String, detail_text: String) -> void:
 
 func _add_tool_event(event_data: Dictionary) -> void:
 	_show_background_context_viewer()
-	var tool_name: String = str(event_data.get("toolName", "tool"))
+	var tool_call_id: String = _get_tool_call_key(event_data)
+	if tool_items_by_call_id.has(tool_call_id):
+		var existing_item: Node = tool_items_by_call_id.get(tool_call_id, null) as Node
+		if existing_item != null:
+			existing_item.call("append_tool_event", event_data)
+			_scroll_to_bottom()
+		return
+
 	var item: Node = TOOL_CALL_ITEM_SCENE.instantiate()
 	background_context_container.add_child(item)
-	item.call("setup", tool_name, JSON.stringify(event_data.get("args", {}), "\t"))
-	tool_items_by_name[tool_name] = item
+	item.call("setup_tool_event", event_data)
+	tool_items_by_call_id[tool_call_id] = item
 	_scroll_to_bottom()
 
 
-func _append_tool_event(event_data: Dictionary, detail_text: String) -> void:
-	var tool_name: String = str(event_data.get("toolName", "tool"))
-	var item: Node = tool_items_by_name.get(tool_name, null) as Node
+func _append_tool_event(event_data: Dictionary) -> void:
+	var tool_call_id: String = _get_tool_call_key(event_data)
+	var item: Node = tool_items_by_call_id.get(tool_call_id, null) as Node
 	if item == null:
 		_add_tool_event(event_data)
-		item = tool_items_by_name.get(tool_name, null) as Node
+		item = tool_items_by_call_id.get(tool_call_id, null) as Node
 
 	if item != null:
-		item.call("append_detail", detail_text)
+		item.call("append_tool_event", event_data)
 		_scroll_to_bottom()
+
+
+func _append_thinking_event(delta_text: String) -> void:
+	if delta_text.is_empty():
+		return
+
+	_show_background_context_viewer()
+	if active_thinking_item == null:
+		active_thinking_item = TOOL_CALL_ITEM_SCENE.instantiate()
+		background_context_container.add_child(active_thinking_item)
+		active_thinking_item.call("setup_thinking")
+
+	active_thinking_item.call("append_thinking_delta", delta_text)
+	_scroll_to_bottom()
+
+
+func _get_tool_call_key(event_data: Dictionary) -> String:
+	var tool_call_id: String = str(event_data.get("toolCallId", ""))
+	if not tool_call_id.is_empty():
+		return tool_call_id
+
+	var approval_id: String = str(event_data.get("approvalId", ""))
+	if not approval_id.is_empty():
+		return approval_id
+
+	return "%s-%s" % [str(event_data.get("toolName", "tool")), str(event_data.get("step", 0))]
 
 
 func _show_approval_dialog(event_data: Dictionary) -> void:
@@ -684,9 +929,102 @@ func _format_relative_time(timestamp: String) -> String:
 	return timestamp.replace("T", " ").replace("Z", "")
 
 
+func _set_streaming_state(is_streaming: bool) -> void:
+	send_button.visible = not is_streaming
+	stop_button.visible = is_streaming
+	_update_send_state()
+
+
 func _update_send_state() -> void:
-	send_button.disabled = not socket_ready
+	var is_streaming: bool = not active_stream_id.is_empty()
+	send_button.disabled = not socket_ready or is_streaming
+	stop_button.disabled = not socket_ready or not is_streaming
 	create_new_session_button.visible = socket_ready
+
+
+func _clear_todo_items() -> void:
+	last_todo_signature = ""
+	todo_list.hide()
+	for child: Node in todo_container.get_children():
+		child.queue_free()
+
+
+func _update_todo_list_from_text(text: String) -> void:
+	var todos: Array[Dictionary] = _extract_todo_items(text)
+	if todos.is_empty():
+		return
+
+	var signature_parts: PackedStringArray = PackedStringArray()
+	for todo: Dictionary in todos:
+		signature_parts.append("%s:%s" % [str(todo.get("checked", false)), str(todo.get("text", ""))])
+
+	var signature: String = "|".join(signature_parts)
+	if signature == last_todo_signature:
+		return
+
+	last_todo_signature = signature
+	for child: Node in todo_container.get_children():
+		child.queue_free()
+
+	for todo: Dictionary in todos:
+		var checkbox: CheckBox = CheckBox.new()
+		checkbox.text = str(todo.get("text", ""))
+		checkbox.button_pressed = bool(todo.get("checked", false))
+		checkbox.disabled = true
+		checkbox.focus_mode = Control.FOCUS_NONE
+		todo_container.add_child(checkbox)
+
+	todo_list.show()
+
+
+func _extract_todo_items(text: String) -> Array[Dictionary]:
+	var todos: Array[Dictionary] = []
+	var lines: PackedStringArray = text.split("\n")
+	var has_task_marker: bool = false
+	var current_task_block: Array[Dictionary] = []
+
+	for raw_line: String in lines:
+		var line: String = raw_line.strip_edges()
+		if line.begins_with("- [ ] ") or line.begins_with("* [ ] "):
+			has_task_marker = true
+			current_task_block.append({ "text": line.substr(6).strip_edges(), "checked": false })
+		elif line.begins_with("- [x] ") or line.begins_with("- [X] ") or line.begins_with("* [x] ") or line.begins_with("* [X] "):
+			has_task_marker = true
+			current_task_block.append({ "text": line.substr(6).strip_edges(), "checked": true })
+		elif not line.is_empty() and not current_task_block.is_empty():
+			todos = current_task_block.duplicate()
+			current_task_block.clear()
+
+	if has_task_marker:
+		if not current_task_block.is_empty():
+			todos = current_task_block.duplicate()
+		return todos
+
+	var in_todo_block: bool = false
+	for raw_line: String in lines:
+		var line: String = raw_line.strip_edges()
+		var lower_line: String = line.to_lower()
+		if lower_line == "todo" or lower_line == "todo:" or lower_line.contains("待办"):
+			in_todo_block = true
+			continue
+
+		if not in_todo_block:
+			continue
+
+		if line.is_empty():
+			if not todos.is_empty():
+				break
+			continue
+
+		var dot_index: int = line.find(". ")
+		if dot_index > 0 and line.substr(0, dot_index).is_valid_int():
+			todos.append({ "text": line.substr(dot_index + 2).strip_edges(), "checked": false })
+		elif line.begins_with("- ") or line.begins_with("* "):
+			todos.append({ "text": line.substr(2).strip_edges(), "checked": false })
+		elif not todos.is_empty():
+			break
+
+	return todos
 
 
 func _on_settings_button_pressed() -> void:

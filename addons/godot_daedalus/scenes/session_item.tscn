@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://l14ydi5m02t2" path="res://addons/godot_daedalus/scripts/session_item.gd" id="1_wpb2w"]
 [ext_resource type="Texture2D" uid="uid://p6usuyfrlohx" path="res://addons/godot_daedalus/assets/icons/loader.svg" id="2_qgtoa"]
+[ext_resource type="Texture2D" uid="uid://bkkiygwsbbrd7" path="res://addons/godot_daedalus/assets/icons/archive.svg" id="3_d08cg"]
 
 [sub_resource type="Animation" id="Animation_d08cg"]
 length = 0.001
@@ -71,8 +72,17 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_type_variation = &"LabelNoMargin"
+theme_override_font_sizes/font_size = 16
 text = "Title"
 text_overrun_behavior = 1
+
+[node name="ArchiveButton" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer" unique_id=1388259329]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+tooltip_text = "Archive"
+theme_type_variation = &"FlatButton"
+icon = ExtResource("3_d08cg")
 
 [node name="LoaderIcon" type="TextureRect" parent="MarginContainer/VBoxContainer/HBoxContainer" unique_id=293248998]
 unique_name_in_owner = true
@@ -81,7 +91,9 @@ layout_mode = 2
 size_flags_horizontal = 8
 size_flags_vertical = 0
 offset_transform_enabled = true
+offset_transform_position = Vector2(0, 4)
 offset_transform_rotation = -6.2831855
+mouse_filter = 2
 texture = ExtResource("2_qgtoa")
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="MarginContainer/VBoxContainer/HBoxContainer/LoaderIcon" unique_id=771714724]
@@ -94,3 +106,6 @@ layout_mode = 2
 theme_type_variation = &"LabelNoMargin"
 theme_override_font_sizes/font_size = 12
 text = "Relative Time"
+
+[connection signal="mouse_entered" from="." to="." method="_on_mouse_entered"]
+[connection signal="mouse_exited" from="." to="." method="_on_mouse_exited"]

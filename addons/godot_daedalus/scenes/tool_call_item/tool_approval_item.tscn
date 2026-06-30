@@ -1,0 +1,21 @@
+[gd_scene format=3 uid="uid://c0fteh4alx02y"]
+
+[ext_resource type="Texture2D" uid="uid://ccw4n4twpde11" path="res://addons/godot_daedalus/assets/icons/shield.svg" id="1_pduhm"]
+
+[node name="ToolApprovalItem" type="HBoxContainer" unique_id=1721123898]
+
+[node name="Icon" type="TextureRect" parent="." unique_id=1802417988]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+texture = ExtResource("1_pduhm")
+expand_mode = 3
+stretch_mode = 5
+
+[node name="DetailsButton" type="LinkButton" parent="." unique_id=1865089296]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+text = "Details"
+underline = 1

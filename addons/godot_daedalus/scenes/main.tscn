@@ -10,6 +10,7 @@
 [ext_resource type="Texture2D" uid="uid://ciialjuucs081" path="res://addons/godot_daedalus/assets/icons/settings.svg" id="4_v6xl6"]
 [ext_resource type="PackedScene" uid="uid://dftctpgnf7byb" path="res://addons/godot_daedalus/scenes/boot_splash.tscn" id="5_boot"]
 [ext_resource type="Texture2D" uid="uid://cq15q550jtb21" path="res://addons/godot_daedalus/assets/icons/disconnected.svg" id="5_m2uxd"]
+[ext_resource type="Texture2D" uid="uid://ctpm83h33rpbq" path="res://addons/godot_daedalus/assets/icons/search.svg" id="6_m2uxd"]
 
 [node name="Main" type="VBoxContainer" unique_id=81601605]
 offset_right = 1152.0
@@ -24,8 +25,25 @@ layout_mode = 2
 theme_type_variation = &"FlatButton"
 icon = ExtResource("1_hv046")
 
+[node name="WorkspaceFilterButton" type="OptionButton" parent="HeaderContainer" unique_id=365115643]
+unique_name_in_owner = true
+layout_mode = 2
+selected = 0
+item_count = 1
+popup/item_0/text = "All"
+popup/item_0/id = 0
+
+[node name="SearchSessionLineEdit" type="LineEdit" parent="HeaderContainer" unique_id=1392628004]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Filter session"
+clear_button_enabled = true
+right_icon = ExtResource("6_m2uxd")
+
 [node name="SessionOptionButton" type="OptionButton" parent="HeaderContainer" unique_id=1654924232]
 unique_name_in_owner = true
+visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 selected = 0
@@ -56,6 +74,16 @@ icon = ExtResource("5_m2uxd")
 [node name="SessionListViewer" type="VBoxContainer" parent="." unique_id=1116610413]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ScrollContainer" type="ScrollContainer" parent="SessionListViewer" unique_id=1323299812]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="SessionList" type="VBoxContainer" parent="SessionListViewer/ScrollContainer" unique_id=1183204434]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
 size_flags_vertical = 3
 
 [node name="BackgroundContextViewer" type="VBoxContainer" parent="." unique_id=1744028626]
@@ -114,6 +142,16 @@ text = "Reject"
 [node name="SkipButton" type="Button" parent="BackgroundContextViewer/ApprovalDialog/VBoxContainer/HBoxContainer" unique_id=227942498]
 layout_mode = 2
 text = "Skip"
+
+[node name="TodoList" type="FoldableContainer" parent="BackgroundContextViewer" unique_id=1199180687]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+title = "Todo"
+
+[node name="TodoContainer" type="VBoxContainer" parent="BackgroundContextViewer/TodoList" unique_id=353063066]
+unique_name_in_owner = true
+layout_mode = 2
 
 [node name="TextEdit" type="TextEdit" parent="." unique_id=642272112]
 custom_minimum_size = Vector2(0, 128)
@@ -211,6 +249,8 @@ layout_mode = 2
 size_flags_vertical = 3
 
 [connection signal="pressed" from="HeaderContainer/BackButton" to="." method="_on_back_button_pressed"]
+[connection signal="item_selected" from="HeaderContainer/WorkspaceFilterButton" to="." method="_on_workspace_filter_button_item_selected"]
+[connection signal="text_changed" from="HeaderContainer/SearchSessionLineEdit" to="." method="_on_search_session_line_edit_text_changed"]
 [connection signal="item_selected" from="HeaderContainer/SessionOptionButton" to="." method="_on_session_option_button_item_selected"]
 [connection signal="pressed" from="HeaderContainer/CreateNewSessionButton" to="." method="_on_create_new_session_button_pressed"]
 [connection signal="pressed" from="HeaderContainer/SettingsButton" to="." method="_on_settings_button_pressed"]

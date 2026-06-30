@@ -4,12 +4,14 @@ extends AcceptDialog
 signal provider_config_save_requested(api_key: String)
 signal provider_config_clear_requested
 
-@onready var deepseek_api_key_line_edit: LineEdit = $GridContainer/HBoxContainer/DeepseekAPIKeyLineEdit
-@onready var clear_deepseek_api_key_button: Button = $GridContainer/HBoxContainer/ClearDeepseekAPIKeyButton
-@onready var provider_option_button: OptionButton = $GridContainer/ProviderOptionButton
+@onready var provider_option_button: OptionButton = %ProviderOptionButton
+@onready var deepseek_api_key_line_edit: LineEdit = %DeepseekAPIKeyLineEdit
+@onready var clear_deepseek_api_key_button: Button = %ClearDeepseekAPIKeyButton
+
 
 func _ready() -> void:
 	show()
+
 
 func setup_provider_config(status: Dictionary) -> void:
 	var configured: bool = bool(status.get("configured", false))

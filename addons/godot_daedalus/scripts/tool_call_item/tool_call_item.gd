@@ -60,8 +60,10 @@ func append_tool_event(event_data: Dictionary) -> void:
 	var event_type: String = str(event_data.get("type", ""))
 	if event_type == "tool.result":
 		_add_result_item(event_data)
+		_set_folded(true)
 	elif event_type == "tool.error":
 		_add_error_item(event_data)
+		_set_folded(true)
 	elif event_type == "tool.approval_required":
 		_add_approval_item(event_data)
 	else:
@@ -77,6 +79,21 @@ func append_thinking_delta(text: String) -> void:
 		setup_thinking()
 
 	thinking_label.text += text
+
+
+func finish_thinking() -> void:
+	_set_folded(true)
+
+
+func _set_folded(is_folded: bool) -> void:
+	for property: Dictionary in foldable_container.get_property_list():
+		var property_name: String = str(property.get("name", ""))
+		if property_name == "folded" or property_name == "collapsed":
+			foldable_container.set(property_name, is_folded)
+			return
+		if property_name == "expanded":
+			foldable_container.set(property_name, not is_folded)
+			return
 
 
 func _add_item_for_event(event_data: Dictionary) -> void:

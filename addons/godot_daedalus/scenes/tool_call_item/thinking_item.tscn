@@ -3,12 +3,17 @@
 [ext_resource type="Texture2D" uid="uid://imjgcrfhfjj5" path="res://addons/godot_daedalus/assets/icons/think.svg" id="1_0slkb"]
 
 [node name="ThinkingItem" type="HBoxContainer" unique_id=1998957647]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 
 [node name="Icon" type="TextureRect" parent="." unique_id=1595538475]
 custom_minimum_size = Vector2(14, 14)
 layout_mode = 2
 size_flags_horizontal = 4
-size_flags_vertical = 4
+size_flags_vertical = 0
 texture = ExtResource("1_0slkb")
 expand_mode = 3
 stretch_mode = 5

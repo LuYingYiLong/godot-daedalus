@@ -32,3 +32,7 @@ func _on_mouse_entered() -> void:
 
 func _on_mouse_exited() -> void:
 	archive_button.hide()
+
+
+func _on_archive_button_pressed() -> void:
+	pass # Replace with function body.

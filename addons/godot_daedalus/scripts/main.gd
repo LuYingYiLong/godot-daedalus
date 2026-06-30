@@ -237,6 +237,7 @@ func _show_session_list_viewer() -> void:
 	workspace_filter_button.show()
 	search_session_line_edit.show()
 	session_option_button.hide()
+	context_length_button.hide()
 
 
 func _show_background_context_viewer() -> void:
@@ -245,6 +246,7 @@ func _show_background_context_viewer() -> void:
 	workspace_filter_button.hide()
 	search_session_line_edit.hide()
 	session_option_button.show()
+	context_length_button.show()
 
 
 func _on_create_new_session_button_pressed() -> void:
@@ -284,10 +286,8 @@ func _on_approve_button_pressed() -> void:
 	if pending_approval_id.is_empty():
 		return
 
-	active_assistant_item = ASSISTANT_MARKDOWN_ITEM_SCENE.instantiate()
-	background_context_container.add_child(active_assistant_item)
-	active_assistant_item.call("clear_message")
 	active_stream_id = _send_request("approval.approve", { "approvalId": pending_approval_id }, "approval-approve")
+	active_assistant_item = null
 	active_assistant_text = ""
 	_set_streaming_state(true)
 	_scroll_to_bottom()
@@ -333,9 +333,7 @@ func _send_chat_text(message_text: String) -> void:
 	background_context_container.add_child(user_item)
 	user_item.call("setup", message_text)
 
-	active_assistant_item = ASSISTANT_MARKDOWN_ITEM_SCENE.instantiate()
-	background_context_container.add_child(active_assistant_item)
-	active_assistant_item.call("clear_message")
+	active_assistant_item = null
 	active_assistant_text = ""
 	_clear_todo_items()
 
@@ -460,7 +458,7 @@ func _handle_response(message: Dictionary) -> void:
 			_apply_session_metadata(metadata as Dictionary)
 		_clear_chat_items()
 		_show_background_context_viewer()
-		_render_session_messages(result_dictionary.get("messages", []))
+		_render_session_timeline(result_dictionary.get("messages", []), result_dictionary.get("events", []))
 		_send_request("workspace.list", {}, "workspace-list")
 		_send_request("session.info", {}, "session-info")
 	elif bool(result_dictionary.get("configured", false)) and result_dictionary.has("provider"):
@@ -490,6 +488,7 @@ func _handle_event(message: Dictionary) -> void:
 
 	var data_dictionary: Dictionary = data as Dictionary
 	if event_name == "ai.delta":
+		_ensure_active_assistant_item()
 		if active_assistant_item != null:
 			var delta_text: String = str(data_dictionary.get("text", ""))
 			active_assistant_text += delta_text
@@ -517,6 +516,9 @@ func _handle_event(message: Dictionary) -> void:
 	elif event_name == "ai.thinking.delta":
 		_append_thinking_event(str(data_dictionary.get("text", "")))
 	elif event_name == "ai.thinking.done":
+		if active_thinking_item != null:
+			active_thinking_item.call("finish_thinking")
+			_scroll_to_bottom()
 		active_thinking_item = null
 	elif event_name == "tool.call":
 		_add_tool_event(data_dictionary)
@@ -774,6 +776,139 @@ func _render_session_messages(messages_value: Variant) -> void:
 	_scroll_to_bottom()
 
 
+func _render_session_timeline(messages_value: Variant, events_value: Variant) -> void:
+	var messages: Array = []
+	if typeof(messages_value) == TYPE_ARRAY:
+		messages = messages_value as Array
+
+	var events_by_request_id: Dictionary[String, Array] = {}
+	var unmatched_events: Array[Dictionary] = []
+	_collect_session_events(events_value, events_by_request_id, unmatched_events)
+
+	var rendered_request_ids: Array[String] = []
+	var rendered_unmatched_events: bool = false
+
+	for item: Variant in messages:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var message: Dictionary = item as Dictionary
+		var role: String = str(message.get("role", ""))
+		var content: String = str(message.get("content", ""))
+		var request_id: String = str(message.get("requestId", ""))
+
+		if role == "user":
+			_add_user_message_item(content)
+			if not request_id.is_empty():
+				_render_events_for_request(request_id, events_by_request_id, rendered_request_ids)
+		elif role == "assistant":
+			if not request_id.is_empty():
+				_render_events_for_request(request_id, events_by_request_id, rendered_request_ids)
+			elif not rendered_unmatched_events:
+				_render_event_records(unmatched_events)
+				rendered_unmatched_events = true
+			_add_assistant_message_item(content)
+
+	if not rendered_unmatched_events:
+		_render_event_records(unmatched_events)
+
+	for request_id: String in events_by_request_id.keys():
+		if rendered_request_ids.has(request_id):
+			continue
+
+		_render_events_for_request(request_id, events_by_request_id, rendered_request_ids)
+
+	active_thinking_item = null
+	_scroll_to_bottom()
+
+
+func _collect_session_events(events_value: Variant, events_by_request_id: Dictionary[String, Array], unmatched_events: Array[Dictionary]) -> void:
+	if typeof(events_value) != TYPE_ARRAY:
+		return
+
+	var events: Array = events_value as Array
+	for item: Variant in events:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var event_record: Dictionary = item as Dictionary
+		var request_id: String = str(event_record.get("requestId", ""))
+		if request_id.is_empty():
+			unmatched_events.append(event_record)
+			continue
+
+		if not events_by_request_id.has(request_id):
+			events_by_request_id[request_id] = []
+
+		var request_events: Array = events_by_request_id[request_id]
+		request_events.append(event_record)
+
+
+func _render_events_for_request(request_id: String, events_by_request_id: Dictionary[String, Array], rendered_request_ids: Array[String]) -> void:
+	if rendered_request_ids.has(request_id):
+		return
+
+	rendered_request_ids.append(request_id)
+	var records: Array = events_by_request_id.get(request_id, []) as Array
+	_render_event_records(records)
+
+
+func _render_event_records(records: Array) -> void:
+	for item: Variant in records:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var event_record: Dictionary = item as Dictionary
+		var event_name: String = str(event_record.get("event", ""))
+		var data_value: Variant = event_record.get("data", {})
+		if typeof(data_value) != TYPE_DICTIONARY:
+			continue
+
+		var data: Dictionary = data_value as Dictionary
+		if not data.has("type"):
+			data["type"] = event_name
+
+		_replay_session_event(event_name, data)
+
+
+func _render_session_events(events_value: Variant) -> void:
+	if typeof(events_value) != TYPE_ARRAY:
+		return
+
+	var events: Array = events_value as Array
+	for item: Variant in events:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var event_record: Dictionary = item as Dictionary
+		var event_name: String = str(event_record.get("event", ""))
+		var data_value: Variant = event_record.get("data", {})
+		if typeof(data_value) != TYPE_DICTIONARY:
+			continue
+
+		var data: Dictionary = data_value as Dictionary
+		if not data.has("type"):
+			data["type"] = event_name
+
+		_replay_session_event(event_name, data)
+
+	active_thinking_item = null
+	_scroll_to_bottom()
+
+
+func _replay_session_event(event_name: String, event_data: Dictionary) -> void:
+	if event_name == "ai.thinking.delta":
+		_append_thinking_event(str(event_data.get("text", "")))
+	elif event_name == "ai.thinking.done":
+		if active_thinking_item != null:
+			active_thinking_item.call("finish_thinking")
+		active_thinking_item = null
+	elif event_name == "tool.call" or event_name == "tool.approval_required":
+		_add_tool_event(event_data)
+	elif event_name == "tool.result" or event_name == "tool.error":
+		_append_tool_event(event_data)
+
+
 func _add_user_message_item(message_text: String) -> void:
 	var user_item: Node = USER_MESSAGE_ITEM_SCENE.instantiate()
 	background_context_container.add_child(user_item)
@@ -784,6 +919,15 @@ func _add_assistant_message_item(message_text: String) -> void:
 	var assistant_item: Node = ASSISTANT_MARKDOWN_ITEM_SCENE.instantiate()
 	background_context_container.add_child(assistant_item)
 	assistant_item.call("setup", message_text)
+
+
+func _ensure_active_assistant_item() -> void:
+	if active_assistant_item != null:
+		return
+
+	active_assistant_item = ASSISTANT_MARKDOWN_ITEM_SCENE.instantiate()
+	background_context_container.add_child(active_assistant_item)
+	active_assistant_item.call("clear_message")
 
 
 func _show_response_error(message: Dictionary) -> void:
@@ -820,6 +964,10 @@ func _add_system_tool_item(title_text: String, detail_text: String) -> void:
 
 func _add_tool_event(event_data: Dictionary) -> void:
 	_show_background_context_viewer()
+	if active_assistant_item != null:
+		active_assistant_item.call("finish_message")
+		active_assistant_item = null
+
 	var tool_call_id: String = _get_tool_call_key(event_data)
 	if tool_items_by_call_id.has(tool_call_id):
 		var existing_item: Node = tool_items_by_call_id.get(tool_call_id, null) as Node

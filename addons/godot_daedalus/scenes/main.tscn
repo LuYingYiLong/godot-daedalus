@@ -183,6 +183,7 @@ mouse_filter = 0
 [node name="AddContextButton" type="MenuButton" parent="TextEdit/MarginContainer/VBoxContainer/HBoxContainer" unique_id=562787815]
 unique_name_in_owner = true
 layout_mode = 2
+tooltip_text = "Add files and stuff"
 theme_type_variation = &"FlatButton"
 icon = ExtResource("1_tukfc")
 item_count = 1
@@ -219,10 +220,14 @@ popup/item_1/id = 1
 popup/item_2/text = "Read Only"
 popup/item_2/id = 2
 
+[node name="Control" type="Control" parent="TextEdit/MarginContainer/VBoxContainer/HBoxContainer" unique_id=1164771243]
+layout_mode = 2
+size_flags_horizontal = 3
+
 [node name="ContextLengthButton" type="Button" parent="TextEdit/MarginContainer/VBoxContainer/HBoxContainer" unique_id=1080659553]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 10
+size_flags_horizontal = 8
 tooltip_text = "Context usage: 0%"
 theme_type_variation = &"FlatButton"
 icon = ExtResource("2_11dqu")

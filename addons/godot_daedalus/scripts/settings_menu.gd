@@ -9,10 +9,6 @@ signal provider_config_clear_requested
 @onready var clear_deepseek_api_key_button: Button = %ClearDeepseekAPIKeyButton
 
 
-func _ready() -> void:
-	show()
-
-
 func setup_provider_config(status: Dictionary) -> void:
 	var configured: bool = bool(status.get("configured", false))
 
@@ -23,6 +19,7 @@ func setup_provider_config(status: Dictionary) -> void:
 
 	clear_deepseek_api_key_button.disabled = not configured
 	provider_option_button.disabled = true
+	show()
 
 
 func _on_confirmed() -> void:

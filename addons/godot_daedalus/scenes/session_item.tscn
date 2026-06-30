@@ -1,0 +1,96 @@
+[gd_scene format=3 uid="uid://bic1etsxo1epd"]
+
+[ext_resource type="Script" uid="uid://l14ydi5m02t2" path="res://addons/godot_daedalus/scripts/session_item.gd" id="1_wpb2w"]
+[ext_resource type="Texture2D" uid="uid://p6usuyfrlohx" path="res://addons/godot_daedalus/assets/icons/loader.svg" id="2_qgtoa"]
+
+[sub_resource type="Animation" id="Animation_d08cg"]
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath(".:offset_transform_rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [-6.2831855]
+}
+
+[sub_resource type="Animation" id="Animation_qgtoa"]
+resource_name = "loading"
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath(".:offset_transform_rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 1),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [-6.2831855, 6.2831855]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_d08cg"]
+_data = {
+&"RESET": SubResource("Animation_d08cg"),
+&"loading": SubResource("Animation_qgtoa")
+}
+
+[node name="SessionItem" type="Button" unique_id=1391404665]
+custom_minimum_size = Vector2(0, 54)
+offset_right = 602.0
+offset_bottom = 54.0
+theme_type_variation = &"FlatButton"
+script = ExtResource("1_wpb2w")
+
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=1766217343]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 5
+theme_override_constants/margin_top = 5
+theme_override_constants/margin_right = 5
+theme_override_constants/margin_bottom = 5
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer" unique_id=1006390281]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=1738206715]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="MarginContainer/VBoxContainer/HBoxContainer" unique_id=1938958896]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"LabelNoMargin"
+text = "Title"
+text_overrun_behavior = 1
+
+[node name="LoaderIcon" type="TextureRect" parent="MarginContainer/VBoxContainer/HBoxContainer" unique_id=293248998]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 0
+offset_transform_enabled = true
+offset_transform_rotation = -6.2831855
+texture = ExtResource("2_qgtoa")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="MarginContainer/VBoxContainer/HBoxContainer/LoaderIcon" unique_id=771714724]
+unique_name_in_owner = true
+libraries/ = SubResource("AnimationLibrary_d08cg")
+
+[node name="RelativeTimeLabel" type="Label" parent="MarginContainer/VBoxContainer" unique_id=1698991490]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelNoMargin"
+theme_override_font_sizes/font_size = 12
+text = "Relative Time"

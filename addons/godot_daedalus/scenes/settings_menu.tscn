@@ -1,0 +1,61 @@
+[gd_scene format=3 uid="uid://dp3tsanvojx2k"]
+
+[ext_resource type="Script" uid="uid://be4xxflyjlo3e" path="res://addons/godot_daedalus/scripts/settings_menu.gd" id="1_pnjlu"]
+[ext_resource type="Texture2D" uid="uid://cwfwhi42kpukr" path="res://addons/godot_daedalus/assets/icons/clear.svg" id="2_w6r0i"]
+
+[node name="SettingsMenu" type="AcceptDialog" unique_id=740368191]
+oversampling_override = 1.0
+title = "Daedalus Settings"
+initial_position = 2
+size = Vector2i(655, 128)
+maximize_disabled = false
+force_native = true
+min_size = Vector2i(128, 128)
+ok_button_text = "Save"
+script = ExtResource("1_pnjlu")
+
+[node name="GridContainer" type="GridContainer" parent="." unique_id=65203203]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 9.0
+offset_top = 9.0
+offset_right = -9.0
+offset_bottom = -51.0
+grow_horizontal = 2
+grow_vertical = 2
+columns = 2
+
+[node name="ProviderLabel" type="Label" parent="GridContainer" unique_id=915626358]
+layout_mode = 2
+text = "Provider"
+
+[node name="ProviderOptionButton" type="OptionButton" parent="GridContainer" unique_id=840726840]
+layout_mode = 2
+selected = 0
+item_count = 1
+popup/item_0/text = "Deepseek"
+popup/item_0/id = 0
+
+[node name="DeepseekAPIKeyLabel" type="Label" parent="GridContainer" unique_id=493643975]
+layout_mode = 2
+text = "Deepseek API Key"
+
+[node name="HBoxContainer" type="HBoxContainer" parent="GridContainer" unique_id=1384427553]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="DeepseekAPIKeyLineEdit" type="LineEdit" parent="GridContainer/HBoxContainer" unique_id=1108202873]
+layout_mode = 2
+size_flags_horizontal = 3
+caret_blink = true
+secret = true
+
+[node name="ClearDeepseekAPIKeyButton" type="Button" parent="GridContainer/HBoxContainer" unique_id=1646854023]
+layout_mode = 2
+icon = ExtResource("2_w6r0i")
+
+[connection signal="canceled" from="." to="." method="_on_close_requested"]
+[connection signal="close_requested" from="." to="." method="_on_close_requested"]
+[connection signal="confirmed" from="." to="." method="_on_confirmed"]
+[connection signal="pressed" from="GridContainer/HBoxContainer/ClearDeepseekAPIKeyButton" to="." method="_on_clear_deepseek_api_key_button_pressed"]

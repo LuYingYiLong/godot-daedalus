@@ -1,0 +1,17 @@
+[remap]
+
+importer="godot_jieba.dictionary_text"
+importer_version=1
+type="JiebaUTF8"
+uid="uid://i3076i26n0v2"
+path="res://.godot/imported/char_state_tab.utf8-122da3117aa460bd2dbbd60098772ef8.res"
+
+[deps]
+
+source_file="res://addons/godot_jieba/dict/pos_dict/char_state_tab.utf8"
+dest_files=["res://.godot/imported/char_state_tab.utf8-122da3117aa460bd2dbbd60098772ef8.res"]
+
+[params]
+
+encoding="Auto"
+store_source_data=false

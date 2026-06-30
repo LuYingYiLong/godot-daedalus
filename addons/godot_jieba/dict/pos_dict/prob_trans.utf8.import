@@ -1,0 +1,17 @@
+[remap]
+
+importer="godot_jieba.dictionary_text"
+importer_version=1
+type="JiebaUTF8"
+uid="uid://daqroseurm201"
+path="res://.godot/imported/prob_trans.utf8-6ff6b584643759176ec46e71e7c54f0f.res"
+
+[deps]
+
+source_file="res://addons/godot_jieba/dict/pos_dict/prob_trans.utf8"
+dest_files=["res://.godot/imported/prob_trans.utf8-6ff6b584643759176ec46e71e7c54f0f.res"]
+
+[params]
+
+encoding="Auto"
+store_source_data=false

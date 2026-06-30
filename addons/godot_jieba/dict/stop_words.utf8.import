@@ -1,0 +1,17 @@
+[remap]
+
+importer="godot_jieba.dictionary_text"
+importer_version=1
+type="JiebaUTF8"
+uid="uid://dh7w361svhqu4"
+path="res://.godot/imported/stop_words.utf8-cecb65388e27defb65108c339832f0bc.res"
+
+[deps]
+
+source_file="res://addons/godot_jieba/dict/stop_words.utf8"
+dest_files=["res://.godot/imported/stop_words.utf8-cecb65388e27defb65108c339832f0bc.res"]
+
+[params]
+
+encoding="Auto"
+store_source_data=false

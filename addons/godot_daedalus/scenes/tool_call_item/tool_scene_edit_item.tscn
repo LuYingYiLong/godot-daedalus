@@ -1,0 +1,21 @@
+[gd_scene format=3 uid="uid://b2qcnd4eg8gwd"]
+
+[ext_resource type="Texture2D" uid="uid://cp04co2ky0ahy" path="res://addons/godot_daedalus/assets/icons/scene_edit.svg" id="1_ke7a8"]
+
+[node name="ToolSceneEditItem" type="HBoxContainer" unique_id=940508112]
+
+[node name="Icon" type="TextureRect" parent="." unique_id=1408859521]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+texture = ExtResource("1_ke7a8")
+expand_mode = 3
+stretch_mode = 5
+
+[node name="DetailsButton" type="LinkButton" parent="." unique_id=1433648224]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+text = "Edit Scene: {file}"
+underline = 1

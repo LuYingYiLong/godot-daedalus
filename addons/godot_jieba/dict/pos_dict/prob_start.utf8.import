@@ -1,0 +1,17 @@
+[remap]
+
+importer="godot_jieba.dictionary_text"
+importer_version=1
+type="JiebaUTF8"
+uid="uid://carpl3i0h6ify"
+path="res://.godot/imported/prob_start.utf8-0c42c192ab96b9c888e7adf9115a8566.res"
+
+[deps]
+
+source_file="res://addons/godot_jieba/dict/pos_dict/prob_start.utf8"
+dest_files=["res://.godot/imported/prob_start.utf8-0c42c192ab96b9c888e7adf9115a8566.res"]
+
+[params]
+
+encoding="Auto"
+store_source_data=false

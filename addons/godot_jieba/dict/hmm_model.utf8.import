@@ -1,0 +1,17 @@
+[remap]
+
+importer="godot_jieba.dictionary_text"
+importer_version=1
+type="JiebaUTF8"
+uid="uid://lvncx0jvobb3"
+path="res://.godot/imported/hmm_model.utf8-712a6588152cbe7e5822f54ff19df35f.res"
+
+[deps]
+
+source_file="res://addons/godot_jieba/dict/hmm_model.utf8"
+dest_files=["res://.godot/imported/hmm_model.utf8-712a6588152cbe7e5822f54ff19df35f.res"]
+
+[params]
+
+encoding="Auto"
+store_source_data=false

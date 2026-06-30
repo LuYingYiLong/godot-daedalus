@@ -1,0 +1,21 @@
+[gd_scene format=3 uid="uid://c3s4jlxtm21ci"]
+
+[ext_resource type="Script" uid="uid://ddqwn6jrvpdnp" path="res://addons/godot_daedalus/scripts/assistant_markdown_item.gd" id="1_assistant"]
+[ext_resource type="Theme" uid="uid://dhartxld7pqyb" path="res://addons/godot_daedalus/assets/markdown_theme.tres" id="2_g8qxc"]
+
+[node name="AssistantMarkdownItem" type="MarginContainer" unique_id=6800614]
+offset_right = 711.0
+offset_bottom = 36.0
+theme_override_constants/margin_right = 16
+script = ExtResource("1_assistant")
+
+[node name="MarkdownLabel" type="MarkdownLabel" parent="." unique_id=532096732]
+text = "Assistant Markdown"
+content_margin = 8
+context_menu_enabled = true
+streaming_enabled = true
+fit_content = true
+scroll_following = true
+scroll_following_visible_characters = true
+layout_mode = 2
+theme = ExtResource("2_g8qxc")

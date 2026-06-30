@@ -1,0 +1,29 @@
+[gd_scene format=3 uid="uid://c0qgg77075lmq"]
+
+[ext_resource type="Script" uid="uid://d35rn4f73pi5v" path="res://addons/godot_daedalus/scripts/user_message_item.gd" id="1_user"]
+[ext_resource type="Theme" uid="uid://dhartxld7pqyb" path="res://addons/godot_daedalus/assets/markdown_theme.tres" id="2_cop0j"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_vp1j8"]
+bg_color = Color(0.3735, 0.6321833, 0.83, 0.49019608)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+corner_detail = 5
+
+[node name="UserMessageItem" type="MarginContainer" unique_id=900495289]
+theme_override_constants/margin_left = 16
+script = ExtResource("1_user")
+
+[node name="PanelContainer" type="PanelContainer" parent="." unique_id=291270553]
+custom_minimum_size = Vector2(256, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_vp1j8")
+
+[node name="UserMessageLabel" type="MarkdownLabel" parent="PanelContainer" unique_id=1497169051]
+text = "User Message"
+content_margin = 8
+context_menu_enabled = true
+fit_content = true
+layout_mode = 2
+theme = ExtResource("2_cop0j")

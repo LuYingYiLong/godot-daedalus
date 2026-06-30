@@ -1,0 +1,17 @@
+[remap]
+
+importer="godot_jieba.dictionary_text"
+importer_version=1
+type="JiebaUTF8"
+uid="uid://di7di0b0lhfe7"
+path="res://.godot/imported/idf.utf8-02ad1a7b7f40d5e8458ef8fdb68d0078.res"
+
+[deps]
+
+source_file="res://addons/godot_jieba/dict/idf.utf8"
+dest_files=["res://.godot/imported/idf.utf8-02ad1a7b7f40d5e8458ef8fdb68d0078.res"]
+
+[params]
+
+encoding="Auto"
+store_source_data=false

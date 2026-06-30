@@ -1,0 +1,43 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+/.vscode
+/.claude
+addons/termdot/~shell.dll
+addons/title_bar_modifier/bin/~libgdexample.windows.template_debug.x86_64.dll
+addons/godot-git-plugin/windows/~libgit_plugin.windows.editor.x86_64.dll
+addons/godot-git-plugin/windows/~libgit_plugin.windows.editor.x86_64.dll
+termdot_error.log
+/addons/toolkit/.vs
+/addons/lteapi/.vs
+addons/toolkit/demo/bin/~toolkit.windows.template_debug.x86_64.dll
+
+# C++
+*.obj
+*.o
+*.os
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.lib
+*.a
+*.pdb
+*.ilk
+!addons/lteapi/bin/*.dll
+
+# Godot 特定
+*.gen.h
+*.gen.cpp
+
+# 其他临时文件
+*.log
+*.tmp
+
+addons/toolkit/src/kiss_fft/**/*.obj
+addons/toolkit/src/kiss_fft/**/*.obj.import
+/addons/fmod_player/CSharpWrappers
+/.vs
+*.dblite
+addons/lteapi/bin/~lteapi.windows.template_debug.x86_64.dll

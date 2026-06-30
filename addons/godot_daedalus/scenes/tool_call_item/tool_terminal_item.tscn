@@ -1,0 +1,23 @@
+[gd_scene format=3 uid="uid://c1ougymen6yqh"]
+
+[ext_resource type="Texture2D" uid="uid://cv7s802xl5p3h" path="res://addons/godot_daedalus/assets/icons/terminal.svg" id="1_p4a3w"]
+
+[node name="ToolTerminalItem" type="HBoxContainer" unique_id=1720226529]
+
+[node name="Icon" type="TextureRect" parent="." unique_id=254546533]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 0
+texture = ExtResource("1_p4a3w")
+expand_mode = 3
+stretch_mode = 5
+
+[node name="TerminalLogLabel" type="RichTextLabel" parent="." unique_id=569657585]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 128)
+layout_mode = 2
+size_flags_horizontal = 3
+focus_mode = 2
+context_menu_enabled = true
+selection_enabled = true

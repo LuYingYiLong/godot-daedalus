@@ -1,0 +1,48 @@
+[gd_scene format=3 uid="uid://dftctpgnf7byb"]
+
+[ext_resource type="Script" uid="uid://chxkymtnb8y4u" path="res://addons/godot_daedalus/scripts/boot_splash.gd" id="1_deckn"]
+[ext_resource type="Texture2D" uid="uid://b1hw1vbs53jy6" path="res://addons/godot_daedalus/assets/icons/icon_large.svg" id="1_ribfp"]
+
+[node name="BootSplash" type="CenterContainer" unique_id=52830250]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_deckn")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=1708576373]
+layout_mode = 2
+
+[node name="Icon" type="TextureRect" parent="VBoxContainer" unique_id=865572883]
+custom_minimum_size = Vector2(84, 84)
+layout_mode = 2
+texture = ExtResource("1_ribfp")
+expand_mode = 3
+stretch_mode = 5
+
+[node name="ErrorContainer" type="VBoxContainer" parent="VBoxContainer" unique_id=495067745]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+
+[node name="ErrorLabel" type="Label" parent="VBoxContainer/ErrorContainer" unique_id=725594145]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+theme_type_variation = &"HeaderLarge"
+text = "Error"
+autowrap_mode = 2
+
+[node name="ErrorDetailsLabel" type="Label" parent="VBoxContainer/ErrorContainer" unique_id=1146277673]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+text = "Error Details"
+autowrap_mode = 2
+
+[node name="ReconnectButton" type="Button" parent="VBoxContainer/ErrorContainer" unique_id=1325972220]
+layout_mode = 2
+text = "Reconnect"
+
+[connection signal="pressed" from="VBoxContainer/ErrorContainer/ReconnectButton" to="." method="_on_reconnect_button_pressed"]

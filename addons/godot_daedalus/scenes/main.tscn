@@ -1,0 +1,222 @@
+[gd_scene format=3 uid="uid://qf05xb4jnata"]
+
+[ext_resource type="Texture2D" uid="uid://c737482c6trjc" path="res://addons/godot_daedalus/assets/icons/back.svg" id="1_hv046"]
+[ext_resource type="Script" uid="uid://c20c3llfub24q" path="res://addons/godot_daedalus/scripts/main.gd" id="1_p4vnu"]
+[ext_resource type="Texture2D" uid="uid://yv2h7xrxokej" path="res://addons/godot_daedalus/assets/icons/add.svg" id="1_tukfc"]
+[ext_resource type="Texture2D" uid="uid://bcpbhwc0oat32" path="res://addons/godot_daedalus/assets/icons/empty_context_length.svg" id="2_11dqu"]
+[ext_resource type="Texture2D" uid="uid://bdxjmg64dahx3" path="res://addons/godot_daedalus/assets/icons/send.svg" id="2_qsedr"]
+[ext_resource type="Texture2D" uid="uid://caeb5bhj5gcns" path="res://addons/godot_daedalus/assets/icons/create_new_session.svg" id="3_vp1j8"]
+[ext_resource type="Texture2D" uid="uid://0cxofwkakcm6" path="res://addons/godot_daedalus/assets/icons/stop.svg" id="4_gf3fo"]
+[ext_resource type="Texture2D" uid="uid://ciialjuucs081" path="res://addons/godot_daedalus/assets/icons/settings.svg" id="4_v6xl6"]
+[ext_resource type="PackedScene" uid="uid://dftctpgnf7byb" path="res://addons/godot_daedalus/scenes/boot_splash.tscn" id="5_boot"]
+[ext_resource type="Texture2D" uid="uid://cq15q550jtb21" path="res://addons/godot_daedalus/assets/icons/disconnected.svg" id="5_m2uxd"]
+
+[node name="Main" type="VBoxContainer" unique_id=81601605]
+offset_right = 1152.0
+offset_bottom = 648.0
+script = ExtResource("1_p4vnu")
+
+[node name="HeaderContainer" type="HBoxContainer" parent="." unique_id=1252537182]
+layout_mode = 2
+
+[node name="BackButton" type="Button" parent="HeaderContainer" unique_id=1493988619]
+layout_mode = 2
+theme_type_variation = &"FlatButton"
+icon = ExtResource("1_hv046")
+
+[node name="SessionOptionButton" type="OptionButton" parent="HeaderContainer" unique_id=1654924232]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+selected = 0
+item_count = 1
+popup/item_0/text = "你好"
+popup/item_0/id = 0
+
+[node name="CreateNewSessionButton" type="Button" parent="HeaderContainer" unique_id=1073886672]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+tooltip_text = "Create new session"
+theme_type_variation = &"FlatButton"
+icon = ExtResource("3_vp1j8")
+
+[node name="SettingsButton" type="Button" parent="HeaderContainer" unique_id=1656396567]
+layout_mode = 2
+theme_type_variation = &"FlatButton"
+icon = ExtResource("4_v6xl6")
+
+[node name="StatusButton" type="Button" parent="HeaderContainer" unique_id=142072528]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Disconnected"
+theme_type_variation = &"FlatButton"
+icon = ExtResource("5_m2uxd")
+
+[node name="SessionListViewer" type="VBoxContainer" parent="." unique_id=1116610413]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="BackgroundContextViewer" type="VBoxContainer" parent="." unique_id=1744028626]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ScrollContainer" type="ScrollContainer" parent="BackgroundContextViewer" unique_id=1394211666]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="BackgroundContextContainer" type="VBoxContainer" parent="BackgroundContextViewer/ScrollContainer" unique_id=2046895021]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+alignment = 2
+
+[node name="ApprovalDialog" type="PanelContainer" parent="BackgroundContextViewer" unique_id=289692166]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+offset_transform_enabled = true
+theme_type_variation = &"PanelContainerTabbarInner"
+
+[node name="VBoxContainer" type="VBoxContainer" parent="BackgroundContextViewer/ApprovalDialog" unique_id=61817274]
+layout_mode = 2
+
+[node name="ApprovalTitleLabel" type="MarkdownLabel" parent="BackgroundContextViewer/ApprovalDialog/VBoxContainer" unique_id=439582884]
+text = "Title"
+content_margin = 8
+fit_content = true
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="ApprovalDescriptionLabel" type="MarkdownLabel" parent="BackgroundContextViewer/ApprovalDialog/VBoxContainer" unique_id=1934558291]
+text = "Description"
+content_margin = 8
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 64)
+layout_mode = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="BackgroundContextViewer/ApprovalDialog/VBoxContainer" unique_id=1366367330]
+layout_mode = 2
+
+[node name="ApproveButton" type="Button" parent="BackgroundContextViewer/ApprovalDialog/VBoxContainer/HBoxContainer" unique_id=92655108]
+layout_mode = 2
+text = "Approve"
+
+[node name="RejectButton" type="Button" parent="BackgroundContextViewer/ApprovalDialog/VBoxContainer/HBoxContainer" unique_id=1353782632]
+layout_mode = 2
+text = "Reject"
+
+[node name="SkipButton" type="Button" parent="BackgroundContextViewer/ApprovalDialog/VBoxContainer/HBoxContainer" unique_id=227942498]
+layout_mode = 2
+text = "Skip"
+
+[node name="TextEdit" type="TextEdit" parent="." unique_id=642272112]
+custom_minimum_size = Vector2(0, 128)
+layout_mode = 2
+caret_blink = true
+
+[node name="MarginContainer" type="MarginContainer" parent="TextEdit" unique_id=1772860813]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 4
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = 4
+
+[node name="VBoxContainer" type="VBoxContainer" parent="TextEdit/MarginContainer" unique_id=1055012262]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="TextEdit/MarginContainer/VBoxContainer" unique_id=697082503]
+layout_mode = 2
+size_flags_vertical = 10
+mouse_filter = 0
+
+[node name="AddContextButton" type="MenuButton" parent="TextEdit/MarginContainer/VBoxContainer/HBoxContainer" unique_id=562787815]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"FlatButton"
+icon = ExtResource("1_tukfc")
+item_count = 1
+popup/item_0/text = "Add file & folder"
+popup/item_0/id = 0
+
+[node name="ModelButton" type="OptionButton" parent="TextEdit/MarginContainer/VBoxContainer/HBoxContainer" unique_id=1736821875]
+unique_name_in_owner = true
+layout_mode = 2
+selected = 0
+item_count = 2
+popup/item_0/text = "V4 Flash"
+popup/item_0/id = 0
+popup/item_1/text = "V4 Pro"
+popup/item_1/id = 1
+
+[node name="EffortButton" type="OptionButton" parent="TextEdit/MarginContainer/VBoxContainer/HBoxContainer" unique_id=596047341]
+unique_name_in_owner = true
+layout_mode = 2
+selected = 0
+item_count = 1
+popup/item_0/text = "Normal"
+popup/item_0/id = 0
+
+[node name="ApprovalModeButton" type="OptionButton" parent="TextEdit/MarginContainer/VBoxContainer/HBoxContainer" unique_id=1350121884]
+unique_name_in_owner = true
+layout_mode = 2
+selected = 0
+item_count = 3
+popup/item_0/text = "Manual"
+popup/item_0/id = 0
+popup/item_1/text = "Auto Safe"
+popup/item_1/id = 1
+popup/item_2/text = "Read Only"
+popup/item_2/id = 2
+
+[node name="ContextLengthButton" type="Button" parent="TextEdit/MarginContainer/VBoxContainer/HBoxContainer" unique_id=1080659553]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 10
+tooltip_text = "Context usage: 0%"
+theme_type_variation = &"FlatButton"
+icon = ExtResource("2_11dqu")
+
+[node name="SendButton" type="Button" parent="TextEdit/MarginContainer/VBoxContainer/HBoxContainer" unique_id=983577757]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Send"
+theme_type_variation = &"FlatButton"
+disabled = true
+icon = ExtResource("2_qsedr")
+
+[node name="StopButton" type="Button" parent="TextEdit/MarginContainer/VBoxContainer/HBoxContainer" unique_id=1281113533]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"FlatButton"
+icon = ExtResource("4_gf3fo")
+
+[node name="BootSplash" parent="." unique_id=1741691643 instance=ExtResource("5_boot")]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+
+[connection signal="pressed" from="HeaderContainer/BackButton" to="." method="_on_back_button_pressed"]
+[connection signal="item_selected" from="HeaderContainer/SessionOptionButton" to="." method="_on_session_option_button_item_selected"]
+[connection signal="pressed" from="HeaderContainer/CreateNewSessionButton" to="." method="_on_create_new_session_button_pressed"]
+[connection signal="pressed" from="HeaderContainer/SettingsButton" to="." method="_on_settings_button_pressed"]
+[connection signal="pressed" from="BackgroundContextViewer/ApprovalDialog/VBoxContainer/HBoxContainer/ApproveButton" to="." method="_on_approve_button_pressed"]
+[connection signal="pressed" from="BackgroundContextViewer/ApprovalDialog/VBoxContainer/HBoxContainer/RejectButton" to="." method="_on_reject_button_pressed"]
+[connection signal="pressed" from="BackgroundContextViewer/ApprovalDialog/VBoxContainer/HBoxContainer/SkipButton" to="." method="_on_skip_approval_button_pressed"]
+[connection signal="pressed" from="TextEdit/MarginContainer/VBoxContainer/HBoxContainer/SendButton" to="." method="_on_send_button_pressed"]
+[connection signal="pressed" from="TextEdit/MarginContainer/VBoxContainer/HBoxContainer/StopButton" to="." method="_on_stop_button_pressed"]
+[connection signal="reconnect_requested" from="BootSplash" to="." method="_on_boot_splash_reconnect_requested"]

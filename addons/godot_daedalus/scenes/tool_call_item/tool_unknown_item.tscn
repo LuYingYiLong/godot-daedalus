@@ -1,0 +1,20 @@
+[gd_scene format=3 uid="uid://b5esov6oww3y3"]
+
+[ext_resource type="Texture2D" uid="uid://c4purtl8h8gwo" path="res://addons/godot_daedalus/assets/icons/mcp.svg" id="1_r8o62"]
+
+[node name="ToolUnknownItem" type="HBoxContainer" unique_id=1099929540]
+
+[node name="Icon" type="TextureRect" parent="." unique_id=946609594]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+texture = ExtResource("1_r8o62")
+expand_mode = 3
+stretch_mode = 5
+
+[node name="DetailsLabel" type="Label" parent="." unique_id=55897325]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelNoMargin"
+text = "Details"

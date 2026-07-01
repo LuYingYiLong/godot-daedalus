@@ -1,0 +1,198 @@
+[gd_scene format=3 uid="uid://brjsrkaconcvu"]
+
+[ext_resource type="Script" uid="uid://bx3pkvk1o25lw" path="res://addons/godot_daedalus/scripts/context_popup_menu.gd" id="1_x3pnh"]
+[ext_resource type="Texture2D" uid="uid://bcpbhwc0oat32" path="res://addons/godot_daedalus/assets/icons/empty_context_length.svg" id="2_frvgi"]
+
+[node name="ContextPopupMenu" type="PopupPanel" unique_id=1258078028]
+oversampling_override = 1.0
+size = Vector2i(270, 1119)
+visible = true
+script = ExtResource("1_x3pnh")
+
+[node name="ContentMargin" type="MarginContainer" parent="." unique_id=1862768457]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Content" type="VBoxContainer" parent="ContentMargin" unique_id=1930503779]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TitleLabel" type="Label" parent="ContentMargin/Content" unique_id=1771470282]
+layout_mode = 2
+theme_type_variation = &"HeaderLarge"
+text = "Context"
+
+[node name="UsageSection" type="VBoxContainer" parent="ContentMargin/Content" unique_id=2088976712]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="UsageSummaryRow" type="HBoxContainer" parent="ContentMargin/Content/UsageSection" unique_id=1497383569]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="UsageIcon" type="TextureRect" parent="ContentMargin/Content/UsageSection/UsageSummaryRow" unique_id=1681896059]
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+texture = ExtResource("2_frvgi")
+expand_mode = 3
+stretch_mode = 5
+
+[node name="UsageTextContainer" type="VBoxContainer" parent="ContentMargin/Content/UsageSection/UsageSummaryRow" unique_id=247100812]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 0
+
+[node name="UsagePercentLabel" type="Label" parent="ContentMargin/Content/UsageSection/UsageSummaryRow/UsageTextContainer" unique_id=1044837935]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"HeaderMedium"
+text = "0%"
+
+[node name="UsageTokensLabel" type="Label" parent="ContentMargin/Content/UsageSection/UsageSummaryRow/UsageTextContainer" unique_id=82922339]
+unique_name_in_owner = true
+layout_mode = 2
+text = "0 / 0 tokens"
+
+[node name="ContextUsageProgressBar" type="ProgressBar" parent="ContentMargin/Content/UsageSection" unique_id=192407641]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 16)
+layout_mode = 2
+
+[node name="DetailsGrid" type="GridContainer" parent="ContentMargin/Content" unique_id=1671174272]
+layout_mode = 2
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 4
+columns = 2
+
+[node name="ModelLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=1515049428]
+layout_mode = 2
+text = "Model"
+
+[node name="ModelValueLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=2049329682]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Unknown"
+autowrap_mode = 3
+
+[node name="HistoryMessagesLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=2020594221]
+layout_mode = 2
+text = "History"
+
+[node name="HistoryMessagesValueLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=189566134]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "0 messages"
+
+[node name="ContextWindowLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=27678465]
+layout_mode = 2
+text = "Window"
+
+[node name="ContextWindowValueLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=745879268]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "0 tokens"
+
+[node name="HistoryBudgetValueNameLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=118582484]
+layout_mode = 2
+text = "Usable"
+
+[node name="HistoryBudgetValueLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=550885510]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "0 usable"
+
+[node name="MaxOutputLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=497936950]
+layout_mode = 2
+text = "Max output"
+
+[node name="MaxOutputValueLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=1490613405]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "0 tokens"
+
+[node name="OutputReserveLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=381706104]
+layout_mode = 2
+text = "Reserve"
+
+[node name="OutputReserveValueLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=1631398379]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "0 reserved"
+
+[node name="SafetyMarginLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=1736346961]
+layout_mode = 2
+text = "Margin"
+
+[node name="SafetyMarginValueLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=309338120]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "0 margin"
+
+[node name="SummaryLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=2117779116]
+layout_mode = 2
+text = "Summary"
+
+[node name="SummaryValueLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=394336268]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Inactive"
+autowrap_mode = 3
+
+[node name="ApprovalLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=1917206213]
+layout_mode = 2
+text = "Approval"
+
+[node name="ApprovalValueLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=823838778]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Manual, 0 pending"
+
+[node name="McpLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=625812812]
+layout_mode = 2
+text = "MCP"
+
+[node name="McpValueLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=516428390]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "0 connected"
+autowrap_mode = 3
+
+[node name="WorkspaceLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=674820874]
+layout_mode = 2
+text = "Workspace"
+
+[node name="WorkspaceValueLabel" type="Label" parent="ContentMargin/Content/DetailsGrid" unique_id=865805054]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "No workspace"
+autowrap_mode = 3
+
+[node name="LocalEventsNoteLabel" type="Label" parent="ContentMargin/Content" unique_id=1946907608]
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+text = "Thinking and tool events are saved locally and are not counted in this context usage."
+autowrap_mode = 3

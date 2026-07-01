@@ -1,46 +1,115 @@
 [gd_scene load_steps=3 format=3]
+
 [ext_resource type="Script" path="res://scripts/guess_number.gd" id="1_script"]
 
 [node name="GuessNumber" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
 script = ExtResource("1_script")
 
-[node name="TargetLabel" type="Label" parent="."]
+[node name="BgColor" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.102, 0.102, 0.18, 1)
+
+[node name="CenterContainer" type="CenterContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="VBox" type="VBoxContainer" parent="CenterContainer"]
+size_flags_horizontal = 4
+size_flags_vertical = 4
+theme_override_constants/separation = 10
+
+[node name="TitleLabel" type="Label" parent="CenterContainer/VBox"]
+text = "🎯 猜数字"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 36
+
+[node name="TargetLabel" type="Label" parent="CenterContainer/VBox"]
 text = "请输入 1-100 之间的数字"
-position = Vector2(150, 50)
 horizontal_alignment = 1
-vertical_alignment = 1
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
 unique_name_in_owner = true
 
-[node name="FeedbackLabel" type="Label" parent="."]
-text = ""
-position = Vector2(150, 110)
-horizontal_alignment = 1
-unique_name_in_owner = true
-
-[node name="AttemptsLabel" type="Label" parent="."]
+[node name="AttemptsLabel" type="Label" parent="CenterContainer/VBox"]
 text = "已猜次数：0 / 7"
-position = Vector2(150, 150)
 horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
 unique_name_in_owner = true
 
-[node name="InputField" type="LineEdit" parent="."]
-position = Vector2(100, 200)
-size = Vector2(200, 40)
+[node name="FeedbackLabel" type="Label" parent="CenterContainer/VBox"]
+text = ""
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 20
+unique_name_in_owner = true
+
+[node name="RangeBar" type="ProgressBar" parent="CenterContainer/VBox"]
+custom_minimum_size = Vector2(0, 20)
+size_flags_horizontal = 4
+unique_name_in_owner = true
+
+[node name="InputRow" type="HBoxContainer" parent="CenterContainer/VBox"]
+alignment = 1
+size_flags_horizontal = 4
+
+[node name="InputField" type="LineEdit" parent="CenterContainer/VBox/InputRow"]
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(200, 0)
 placeholder_text = "输入数字..."
 unique_name_in_owner = true
 
-[node name="GuessButton" type="Button" parent="."]
+[node name="GuessButton" type="Button" parent="CenterContainer/VBox/InputRow"]
 text = "猜！"
-position = Vector2(100, 260)
-size = Vector2(90, 40)
+custom_minimum_size = Vector2(80, 0)
 unique_name_in_owner = true
 
-[node name="RestartButton" type="Button" parent="."]
-text = "重新开始"
-position = Vector2(210, 260)
-size = Vector2(90, 40)
+[node name="HistoryContainer" type="VBoxContainer" parent="CenterContainer/VBox"]
+alignment = 1
+size_flags_horizontal = 4
 unique_name_in_owner = true
 
-[connection signal="pressed" from="GuessButton" to="." method="_on_guess_pressed"]
-[connection signal="pressed" from="RestartButton" to="." method="_on_restart_pressed"]
-[connection signal="text_submitted" from="InputField" to="." method="_on_input_text_entered"]
+[node name="RestartButton" type="Button" parent="CenterContainer/VBox"]
+text = "🔄 重新开始"
+size_flags_horizontal = 4
+unique_name_in_owner = true
+
+[node name="DifficultyRow" type="HBoxContainer" parent="CenterContainer/VBox"]
+alignment = 1
+size_flags_horizontal = 4
+
+[node name="EasyButton" type="Button" parent="CenterContainer/VBox/DifficultyRow"]
+text = "🟢 简单 1-50"
+size_flags_horizontal = 4
+unique_name_in_owner = true
+
+[node name="MediumButton" type="Button" parent="CenterContainer/VBox/DifficultyRow"]
+text = "🟡 中等 1-100"
+size_flags_horizontal = 4
+unique_name_in_owner = true
+
+[node name="HardButton" type="Button" parent="CenterContainer/VBox/DifficultyRow"]
+text = "🔴 困难 1-200"
+size_flags_horizontal = 4
+unique_name_in_owner = true
+
+[node name="BestRecordLabel" type="Label" parent="CenterContainer/VBox"]
+text = ""
+horizontal_alignment = 1
+unique_name_in_owner = true
+theme_override_colors/font_color = Color(1.0, 0.84, 0.0, 1)
+
+[node name="HintButton" type="Button" parent="CenterContainer/VBox/InputRow"]
+text = "💡 提示"
+unique_name_in_owner = true
+
+[connection signal="pressed" from="CenterContainer/VBox/InputRow/GuessButton" to="." method="_on_guess_pressed"]
+[connection signal="pressed" from="CenterContainer/VBox/RestartButton" to="." method="_on_restart_pressed"]
+[connection signal="text_submitted" from="CenterContainer/VBox/InputRow/InputField" to="." method="_on_input_text_entered"]
+[connection signal="pressed" from="CenterContainer/VBox/DifficultyRow/EasyButton" to="." method="_on_easy_pressed"]
+[connection signal="pressed" from="CenterContainer/VBox/DifficultyRow/MediumButton" to="." method="_on_medium_pressed"]
+[connection signal="pressed" from="CenterContainer/VBox/DifficultyRow/HardButton" to="." method="_on_hard_pressed"]
+[connection signal="pressed" from="CenterContainer/VBox/InputRow/HintButton" to="." method="_on_hint_pressed"]

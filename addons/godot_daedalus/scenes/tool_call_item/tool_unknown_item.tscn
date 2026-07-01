@@ -17,6 +17,6 @@ stretch_mode = 5
 unique_name_in_owner = true
 custom_minimum_size = Vector2(128, 0)
 layout_mode = 2
-theme_type_variation = &"LabelNoMargin"
+theme_type_variation = &"aLabelNoMargin"
 text = "Details"
 autowrap_mode = 2

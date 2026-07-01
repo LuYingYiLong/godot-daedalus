@@ -1,6 +1,8 @@
 @tool
 extends MarginContainer
 
+signal content_height_changed
+
 const READ_ITEM_SCENE: PackedScene = preload("uid://dwi5h81jkortw")
 const WRITE_ITEM_SCENE: PackedScene = preload("uid://c0all82wnhv1l")
 const TERMINAL_ITEM_SCENE: PackedScene = preload("uid://c1ougymen6yqh")
@@ -16,7 +18,12 @@ const SEARCH_ITEM_SCENE: PackedScene = preload("uid://dxmloi863owr8")
 var target_path: String
 var tool_call_id: String
 var tool_name: String
-var thinking_label: MarkdownLabel
+var thinking_text: String
+var thinking_finished: bool
+var thinking_markdown_loaded: bool
+var thinking_summary_label: Label
+var thinking_show_button: Button
+var thinking_markdown_label: MarkdownLabel
 
 
 func _ready() -> void:
@@ -34,7 +41,7 @@ func setup_tool_event(event_data: Dictionary) -> void:
 	tool_call_id = str(event_data.get("toolCallId", ""))
 	tool_name = str(event_data.get("toolName", "tool"))
 	foldable_container.title = str(event_data.get("title", tool_name))
-	thinking_label = null
+	_clear_thinking_state()
 
 	for child: Node in item_container.get_children():
 		child.queue_free()
@@ -45,15 +52,12 @@ func setup_tool_event(event_data: Dictionary) -> void:
 func setup_thinking() -> void:
 	tool_name = "Thinking"
 	foldable_container.title = "Thinking"
-	thinking_label = null
+	_clear_thinking_state()
 
 	for child: Node in item_container.get_children():
 		child.queue_free()
 
-	_add_thinking_item({
-		"title": "Thinking",
-		"summary": ""
-	})
+	_add_thinking_summary_item()
 
 
 func append_tool_event(event_data: Dictionary) -> void:
@@ -68,6 +72,7 @@ func append_tool_event(event_data: Dictionary) -> void:
 		_add_approval_item(event_data)
 	else:
 		_add_item_for_event(event_data)
+	content_height_changed.emit()
 
 
 func append_detail(detail_text: String) -> void:
@@ -75,13 +80,20 @@ func append_detail(detail_text: String) -> void:
 
 
 func append_thinking_delta(text: String) -> void:
-	if thinking_label == null:
+	if thinking_summary_label == null:
 		setup_thinking()
 
-	thinking_label.text += text
+	thinking_text += text
+	_update_thinking_summary()
+	if thinking_markdown_loaded and thinking_markdown_label != null:
+		thinking_markdown_label.append_text(text)
 
 
 func finish_thinking() -> void:
+	thinking_finished = true
+	_update_thinking_summary()
+	if thinking_markdown_loaded and thinking_markdown_label != null:
+		thinking_markdown_label.finish_stream()
 	_set_folded(true)
 
 
@@ -172,14 +184,62 @@ func _add_approval_item(event_data: Dictionary) -> void:
 		button.tooltip_text = str(event_data.get("reason", "Needs approval"))
 
 
-func _add_thinking_item(event_data: Dictionary) -> void:
+func _clear_thinking_state() -> void:
+	thinking_text = ""
+	thinking_finished = false
+	thinking_markdown_loaded = false
+	thinking_summary_label = null
+	thinking_show_button = null
+	thinking_markdown_label = null
+
+
+func _add_thinking_summary_item() -> void:
+	var summary_row: HBoxContainer = HBoxContainer.new()
+	summary_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	item_container.add_child(summary_row)
+
+	thinking_summary_label = Label.new()
+	thinking_summary_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	summary_row.add_child(thinking_summary_label)
+
+	thinking_show_button = Button.new()
+	thinking_show_button.text = "查看"
+	thinking_show_button.focus_mode = Control.FOCUS_NONE
+	thinking_show_button.pressed.connect(_on_show_thinking_button_pressed)
+	summary_row.add_child(thinking_show_button)
+
+	_update_thinking_summary()
+
+
+func _update_thinking_summary() -> void:
+	if thinking_summary_label == null:
+		return
+
+	var status_text: String = "已完成" if thinking_finished else "思考中"
+	thinking_summary_label.text = "%s · %d 字符" % [status_text, thinking_text.length()]
+	if thinking_show_button != null:
+		thinking_show_button.visible = thinking_text.length() > 0
+		thinking_show_button.disabled = thinking_markdown_loaded
+		thinking_show_button.text = "已显示" if thinking_markdown_loaded else "查看"
+
+
+func _on_show_thinking_button_pressed() -> void:
+	if thinking_markdown_loaded:
+		return
+
+	thinking_markdown_loaded = true
 	var item: Node = THINKING_ITEM_SCENE.instantiate()
 	item_container.add_child(item)
 
 	var label: MarkdownLabel = item.get_node_or_null("%MessageLabel") as MarkdownLabel
 	if label != null:
-		label.text = str(event_data.get("summary", "Thinking"))
-		thinking_label = label
+		label.clear()
+		label.append_text(thinking_text)
+		if thinking_finished:
+			label.finish_stream()
+		thinking_markdown_label = label
+	_update_thinking_summary()
+	content_height_changed.emit()
 
 
 func _add_result_item(event_data: Dictionary) -> void:

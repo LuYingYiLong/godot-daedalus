@@ -1,0 +1,69 @@
+[gd_scene format=3 uid="uid://d3i7c6i2shbyl"]
+
+[ext_resource type="Texture2D" uid="uid://cxkgwdaoj5cq2" path="res://addons/godot_daedalus/assets/icons/todo_checked.svg" id="1_q8ptp"]
+[ext_resource type="Script" uid="uid://3l788kme6v8x" path="res://addons/godot_daedalus/scripts/todo_item.gd" id="1_xir6q"]
+
+[sub_resource type="Animation" id="Animation_xir6q"]
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath(".:offset_transform_rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [-6.2831855]
+}
+
+[sub_resource type="Animation" id="Animation_21t1q"]
+resource_name = "running"
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath(".:offset_transform_rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 1),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [-6.2831855, 6.2831855]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_7lhgk"]
+_data = {
+&"RESET": SubResource("Animation_xir6q"),
+&"running": SubResource("Animation_21t1q")
+}
+
+[node name="TodoItem" type="HBoxContainer" unique_id=1024760028]
+offset_right = 62.0
+offset_bottom = 29.0
+script = ExtResource("1_xir6q")
+
+[node name="Icon" type="TextureRect" parent="." unique_id=1346458594]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+size_flags_vertical = 4
+offset_transform_enabled = true
+offset_transform_rotation = -6.2831855
+texture = ExtResource("1_q8ptp")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="Icon" unique_id=1570969343]
+unique_name_in_owner = true
+libraries/ = SubResource("AnimationLibrary_7lhgk")
+
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=1050960104]
+layout_mode = 2
+theme_override_constants/margin_left = -8
+
+[node name="TodoLabel" type="Label" parent="MarginContainer" unique_id=1415095811]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"HeaderMedium"
+text = "Todo"

@@ -1,0 +1,29 @@
+[gd_scene format=3 uid="uid://cljnln76ye4o5"]
+
+[ext_resource type="Script" uid="uid://dmmiw7csuj8ni" path="res://addons/godot_daedalus/scripts/tool_call_item/status_item.gd" id="1_ipb1p"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_g7c3b"]
+bg_color = Color(0.94, 0, 0.04700018, 0.078431375)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.8, 0, 0, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+corner_detail = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_1brkv"]
+
+[node name="StatusItem" type="PanelContainer" unique_id=2127336286]
+offset_right = 427.0
+offset_bottom = 91.0
+script = ExtResource("1_ipb1p")
+error_panel = SubResource("StyleBoxFlat_g7c3b")
+message_panel = SubResource("StyleBoxFlat_1brkv")
+
+[node name="Label" type="Label" parent="." unique_id=503521128]
+unique_name_in_owner = true
+layout_mode = 2

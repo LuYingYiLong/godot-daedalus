@@ -71,7 +71,7 @@ icon = ExtResource("4_v6xl6")
 [node name="StatusButton" type="Button" parent="HeaderContainer" unique_id=142072528]
 unique_name_in_owner = true
 layout_mode = 2
-tooltip_text = "Disconnected (1000)"
+tooltip_text = "Disconnected (1000). Click to reconnect."
 theme_type_variation = &"FlatButton"
 icon = ExtResource("5_m2uxd")
 
@@ -198,7 +198,7 @@ popup/item_0/id = 0
 [node name="ModelButton" type="OptionButton" parent="TextEdit/MarginContainer/VBoxContainer/HBoxContainer" unique_id=1736821875]
 unique_name_in_owner = true
 layout_mode = 2
-selected = 0
+selected = 1
 item_count = 2
 popup/item_0/text = "V4 Flash"
 popup/item_0/id = 0
@@ -234,7 +234,7 @@ unique_name_in_owner = true
 visible = false
 layout_mode = 2
 size_flags_horizontal = 8
-tooltip_text = "Context usage: 0%"
+tooltip_text = "Context usage: 0% (0 / 1.0M)"
 theme_type_variation = &"FlatButton"
 icon = ExtResource("2_11dqu")
 
@@ -250,6 +250,7 @@ icon = ExtResource("2_qsedr")
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
+tooltip_text = "Stop"
 theme_type_variation = &"FlatButton"
 disabled = true
 icon = ExtResource("4_gf3fo")
@@ -266,13 +267,16 @@ size_flags_vertical = 3
 [connection signal="item_selected" from="HeaderContainer/SessionOptionButton" to="." method="_on_session_option_button_item_selected"]
 [connection signal="pressed" from="HeaderContainer/CreateNewSessionButton" to="." method="_on_create_new_session_button_pressed"]
 [connection signal="pressed" from="HeaderContainer/SettingsButton" to="." method="_on_settings_button_pressed"]
+[connection signal="pressed" from="HeaderContainer/StatusButton" to="." method="_on_status_button_pressed"]
 [connection signal="mouse_entered" from="SessionListViewer/ScrollContainer/SessionList/SessionItem" to="SessionListViewer/ScrollContainer/SessionList/SessionItem" method="_on_mouse_entered"]
 [connection signal="mouse_exited" from="SessionListViewer/ScrollContainer/SessionList/SessionItem" to="SessionListViewer/ScrollContainer/SessionList/SessionItem" method="_on_mouse_exited"]
-[connection signal="mouse_entered" from="SessionListViewer/ScrollContainer/SessionList/@Button@35221" to="SessionListViewer/ScrollContainer/SessionList/@Button@35221" method="_on_mouse_entered"]
-[connection signal="mouse_exited" from="SessionListViewer/ScrollContainer/SessionList/@Button@35221" to="SessionListViewer/ScrollContainer/SessionList/@Button@35221" method="_on_mouse_exited"]
+[connection signal="mouse_entered" from="SessionListViewer/ScrollContainer/SessionList/@Button@23959" to="SessionListViewer/ScrollContainer/SessionList/@Button@23959" method="_on_mouse_entered"]
+[connection signal="mouse_exited" from="SessionListViewer/ScrollContainer/SessionList/@Button@23959" to="SessionListViewer/ScrollContainer/SessionList/@Button@23959" method="_on_mouse_exited"]
 [connection signal="pressed" from="BackgroundContextViewer/ApprovalDialog/VBoxContainer/HBoxContainer/ApproveButton" to="." method="_on_approve_button_pressed"]
 [connection signal="pressed" from="BackgroundContextViewer/ApprovalDialog/VBoxContainer/HBoxContainer/RejectButton" to="." method="_on_reject_button_pressed"]
 [connection signal="pressed" from="BackgroundContextViewer/ApprovalDialog/VBoxContainer/HBoxContainer/SkipButton" to="." method="_on_skip_approval_button_pressed"]
+[connection signal="item_selected" from="TextEdit/MarginContainer/VBoxContainer/HBoxContainer/ModelButton" to="." method="_on_model_button_item_selected"]
+[connection signal="item_selected" from="TextEdit/MarginContainer/VBoxContainer/HBoxContainer/ApprovalModeButton" to="." method="_on_approval_mode_button_item_selected"]
 [connection signal="pressed" from="TextEdit/MarginContainer/VBoxContainer/HBoxContainer/ContextLengthButton" to="." method="_on_context_length_button_pressed"]
 [connection signal="pressed" from="TextEdit/MarginContainer/VBoxContainer/HBoxContainer/SendButton" to="." method="_on_send_button_pressed"]
 [connection signal="pressed" from="TextEdit/MarginContainer/VBoxContainer/HBoxContainer/StopButton" to="." method="_on_stop_button_pressed"]

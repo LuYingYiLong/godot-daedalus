@@ -1,11 +1,10 @@
 [gd_scene format=3 uid="uid://brjsrkaconcvu"]
 
 [ext_resource type="Script" uid="uid://bx3pkvk1o25lw" path="res://addons/godot_daedalus/scripts/context_popup_menu.gd" id="1_x3pnh"]
-[ext_resource type="Texture2D" uid="uid://bcpbhwc0oat32" path="res://addons/godot_daedalus/assets/icons/empty_context_length.svg" id="2_frvgi"]
 
 [node name="ContextPopupMenu" type="PopupPanel" unique_id=1258078028]
 oversampling_override = 1.0
-size = Vector2i(270, 1119)
+size = Vector2i(270, 606)
 visible = true
 script = ExtResource("1_x3pnh")
 
@@ -36,15 +35,6 @@ theme_override_constants/separation = 4
 [node name="UsageSummaryRow" type="HBoxContainer" parent="ContentMargin/Content/UsageSection" unique_id=1497383569]
 layout_mode = 2
 theme_override_constants/separation = 8
-
-[node name="UsageIcon" type="TextureRect" parent="ContentMargin/Content/UsageSection/UsageSummaryRow" unique_id=1681896059]
-custom_minimum_size = Vector2(20, 20)
-layout_mode = 2
-size_flags_horizontal = 4
-size_flags_vertical = 4
-texture = ExtResource("2_frvgi")
-expand_mode = 3
-stretch_mode = 5
 
 [node name="UsageTextContainer" type="VBoxContainer" parent="ContentMargin/Content/UsageSection/UsageSummaryRow" unique_id=247100812]
 layout_mode = 2

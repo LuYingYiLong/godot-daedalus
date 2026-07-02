@@ -7,7 +7,7 @@ extends Button
 @onready var animation_player: AnimationPlayer = %AnimationPlayer
 @onready var relative_time_label: Label = %RelativeTimeLabel
 
-var session_id: String = ""
+var session_id: String
 
 
 func setup(item_session_id: String, title_text: String, relative_time_text: String) -> void:
@@ -21,7 +21,7 @@ func set_loading(is_loading: bool) -> void:
 	loader_icon.visible = is_loading
 
 	if is_loading:
-		animation_player.play("loading")
+		animation_player.play(&"running")
 	else:
 		animation_player.stop()
 

@@ -4,6 +4,7 @@ extends HBoxContainer
 const TODO_UNCHECKED_ICON: Texture2D = preload("uid://6mfyj4c6motv")
 const TODO_RUNNING_ICON: Texture2D = preload("uid://p6usuyfrlohx")
 const TODO_CHECKED_ICON: Texture2D = preload("uid://cxkgwdaoj5cq2")
+const TODO_FAILED_ICON: Texture2D = preload("uid://b3wroldinq1e2")
 
 @onready var icon: TextureRect = %Icon
 @onready var todo_label: Label = %TodoLabel
@@ -33,6 +34,8 @@ func _get_icon_for_status(status: String) -> Texture2D:
 		return TODO_CHECKED_ICON
 	if status == "running":
 		return TODO_RUNNING_ICON
+	if status == "failed":
+		return TODO_FAILED_ICON
 
 	return TODO_UNCHECKED_ICON
 

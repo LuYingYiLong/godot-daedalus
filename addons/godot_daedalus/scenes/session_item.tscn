@@ -20,7 +20,7 @@ tracks/0/keys = {
 }
 
 [sub_resource type="Animation" id="Animation_qgtoa"]
-resource_name = "loading"
+resource_name = "running"
 loop_mode = 1
 tracks/0/type = "value"
 tracks/0/imported = false
@@ -38,7 +38,7 @@ tracks/0/keys = {
 [sub_resource type="AnimationLibrary" id="AnimationLibrary_d08cg"]
 _data = {
 &"RESET": SubResource("Animation_d08cg"),
-&"loading": SubResource("Animation_qgtoa")
+&"running": SubResource("Animation_qgtoa")
 }
 
 [node name="SessionItem" type="Button" unique_id=1391404665]

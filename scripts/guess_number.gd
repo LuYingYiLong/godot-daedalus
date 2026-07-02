@@ -21,7 +21,7 @@ var current_difficulty: Difficulty = Difficulty.MEDIUM
 
 var target_number: int
 var attempts: int = 0
-var hint_cycle: int = 0
+var last_guess: int = -1
 var range_low: int
 var range_high: int
 
@@ -46,7 +46,7 @@ func new_game() -> void:
 	var cfg: Dictionary = DIFFICULTY_CFG[current_difficulty]
 	target_number = randi_range(cfg["min"], cfg["max"])
 	attempts = 0
-	hint_cycle = 0
+	last_guess = -1
 	range_low = cfg["min"]
 	range_high = cfg["max"]
 	target_label.text = "请输入 %d-%d 之间的数字" % [cfg["min"], cfg["max"]]
@@ -81,6 +81,7 @@ func _on_guess_pressed() -> void:
 		return
 
 	attempts += 1
+	last_guess = guess
 	attempts_label.text = "已猜次数：%d / %d" % [attempts, cfg["limit"]]
 
 	if guess == target_number:
@@ -114,27 +115,27 @@ func _on_guess_pressed() -> void:
 
 
 func _on_hint_pressed() -> void:
-	var hints: Array[String] = _generate_hints()
-	hint_cycle = (hint_cycle + 1) % hints.size()
-	feedback_label.text = hints[hint_cycle]
-	feedback_label.modulate = Color(0.7, 0.5, 1.0)  # 紫色
+	if last_guess < 0:
+		feedback_label.text = "💡 请先猜一个数字！"
+		feedback_label.modulate = Color(0.7, 0.5, 1.0)
+		return
+	feedback_label.text = _get_temperature_hint(last_guess, target_number, range_high - range_low)
+	feedback_label.modulate = Color(0.7, 0.5, 1.0)
 
 
-func _generate_hints() -> Array[String]:
-	var result: Array[String] = []
-	# 1. 奇偶提示
-	result.append("💡 数字是 %s" % ("奇数" if target_number % 2 == 1 else "偶数"))
-	# 2. 范围缩小提示
-	var cfg: Dictionary = DIFFICULTY_CFG[current_difficulty]
-	var mid: int = (cfg["min"] + cfg["max"]) / 2
-	if target_number <= mid:
-		result.append("💡 目标在 %d ~ %d 之间" % [cfg["min"], mid])
+func _get_temperature_hint(guess: int, target: int, range_size: int) -> String:
+	var distance: int = abs(guess - target)
+	if range_size <= 0:
+		return "🎉 已经找到了！"
+	var ratio: float = float(distance) / float(range_size)
+	if ratio < 0.05:
+		return "🔥 快烧着了！"
+	elif ratio < 0.15:
+		return "🟠 很接近"
+	elif ratio < 0.30:
+		return "🟡 有点远"
 	else:
-		result.append("💡 目标在 %d ~ %d 之间" % [mid + 1, cfg["max"]])
-	# 3. 整除性提示（随机 3-9）
-	var n: int = randi_range(3, 9)
-	result.append("💡 数字%s被 %d 整除" % ["能" if target_number % n == 0 else "不能", n])
-	return result
+		return "🔵 还差得远"
 
 
 func _on_restart_pressed() -> void:

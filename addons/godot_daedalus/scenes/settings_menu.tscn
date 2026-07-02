@@ -7,13 +7,14 @@
 oversampling_override = 1.0
 title = "Daedalus Settings"
 initial_position = 2
-size = Vector2i(655, 128)
+size = Vector2i(655, 435)
 maximize_disabled = false
+force_native = true
 min_size = Vector2i(128, 128)
 ok_button_text = "Save"
 script = ExtResource("1_pnjlu")
 
-[node name="GridContainer" type="GridContainer" parent="." unique_id=65203203]
+[node name="TabContainer" type="TabContainer" parent="." unique_id=1119026021]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -23,13 +24,38 @@ offset_right = -9.0
 offset_bottom = -51.0
 grow_horizontal = 2
 grow_vertical = 2
+theme_type_variation = &"TabContainerOdd"
+current_tab = 0
+tab_2/title = "Archived chats"
+
+[node name="General" type="ScrollContainer" parent="TabContainer" unique_id=620720813]
+layout_mode = 2
+metadata/_tab_index = 0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="TabContainer/General" unique_id=175611611]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="GeneralContainer" type="GridContainer" parent="TabContainer/General/VBoxContainer" unique_id=65203203]
+layout_mode = 2
 columns = 2
 
-[node name="ProviderLabel" type="Label" parent="GridContainer" unique_id=915626358]
+[node name="BackendURLLabel" type="Label" parent="TabContainer/General/VBoxContainer/GeneralContainer" unique_id=1120041522]
+layout_mode = 2
+text = "Backend URL"
+
+[node name="BackendURLLineEdit" type="LineEdit" parent="TabContainer/General/VBoxContainer/GeneralContainer" unique_id=1495464268]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "ws://localhost:8080"
+caret_blink = true
+
+[node name="ProviderLabel" type="Label" parent="TabContainer/General/VBoxContainer/GeneralContainer" unique_id=915626358]
 layout_mode = 2
 text = "Provider"
 
-[node name="ProviderOptionButton" type="OptionButton" parent="GridContainer" unique_id=840726840]
+[node name="ProviderOptionButton" type="OptionButton" parent="TabContainer/General/VBoxContainer/GeneralContainer" unique_id=840726840]
 unique_name_in_owner = true
 layout_mode = 2
 selected = 0
@@ -37,27 +63,83 @@ item_count = 1
 popup/item_0/text = "Deepseek"
 popup/item_0/id = 0
 
-[node name="DeepseekAPIKeyLabel" type="Label" parent="GridContainer" unique_id=493643975]
+[node name="DeepseekAPIKeyLabel" type="Label" parent="TabContainer/General/VBoxContainer/GeneralContainer" unique_id=493643975]
 layout_mode = 2
 text = "Deepseek API Key"
 
-[node name="HBoxContainer" type="HBoxContainer" parent="GridContainer" unique_id=1384427553]
+[node name="HBoxContainer" type="HBoxContainer" parent="TabContainer/General/VBoxContainer/GeneralContainer" unique_id=1384427553]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="DeepseekAPIKeyLineEdit" type="LineEdit" parent="GridContainer/HBoxContainer" unique_id=1108202873]
+[node name="DeepseekAPIKeyLineEdit" type="LineEdit" parent="TabContainer/General/VBoxContainer/GeneralContainer/HBoxContainer" unique_id=1108202873]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 caret_blink = true
 secret = true
 
-[node name="ClearDeepseekAPIKeyButton" type="Button" parent="GridContainer/HBoxContainer" unique_id=1646854023]
+[node name="ClearDeepseekAPIKeyButton" type="Button" parent="TabContainer/General/VBoxContainer/GeneralContainer/HBoxContainer" unique_id=1646854023]
 unique_name_in_owner = true
 layout_mode = 2
+tooltip_text = "Clear saved API key"
 icon = ExtResource("2_w6r0i")
+
+[node name="Personalization" type="VBoxContainer" parent="TabContainer" unique_id=444173481]
+visible = false
+layout_mode = 2
+metadata/_tab_index = 1
+
+[node name="CustomInstructionsLabel" type="Label" parent="TabContainer/Personalization" unique_id=1601299335]
+layout_mode = 2
+text = "Custom instructions"
+
+[node name="CustomInstructionsEdit" type="TextEdit" parent="TabContainer/Personalization" unique_id=354201490]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 256)
+layout_mode = 2
+size_flags_vertical = 3
+wrap_mode = 1
+caret_blink = true
+
+[node name="ArchivedChats" type="VBoxContainer" parent="TabContainer" unique_id=1085550901]
+visible = false
+layout_mode = 2
+metadata/_tab_index = 2
+metadata/_tab_name = "Archived chats"
+
+[node name="HBoxContainer" type="HBoxContainer" parent="TabContainer/ArchivedChats" unique_id=1920292159]
+layout_mode = 2
+
+[node name="WorkspaceFilterOptionButton" type="OptionButton" parent="TabContainer/ArchivedChats/HBoxContainer" unique_id=1103638757]
+layout_mode = 2
+selected = 0
+item_count = 1
+popup/item_0/text = "All"
+popup/item_0/id = 0
+
+[node name="SearchArchivedChatLineEdit" type="LineEdit" parent="TabContainer/ArchivedChats/HBoxContainer" unique_id=1254808222]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Search archived chats"
+clear_button_enabled = true
+select_all_on_focus = true
+caret_blink = true
+
+[node name="Button" type="Button" parent="TabContainer/ArchivedChats/HBoxContainer" unique_id=207187615]
+layout_mode = 2
+text = "Delete all"
+
+[node name="ScrollContainer" type="ScrollContainer" parent="TabContainer/ArchivedChats" unique_id=563202303]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ArchivedChatList" type="VBoxContainer" parent="TabContainer/ArchivedChats/ScrollContainer" unique_id=1703279177]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 
 [connection signal="canceled" from="." to="." method="_on_close_requested"]
 [connection signal="close_requested" from="." to="." method="_on_close_requested"]
 [connection signal="confirmed" from="." to="." method="_on_confirmed"]
-[connection signal="pressed" from="GridContainer/HBoxContainer/ClearDeepseekAPIKeyButton" to="." method="_on_clear_deepseek_api_key_button_pressed"]
+[connection signal="pressed" from="TabContainer/General/VBoxContainer/GeneralContainer/HBoxContainer/ClearDeepseekAPIKeyButton" to="." method="_on_clear_deepseek_api_key_button_pressed"]

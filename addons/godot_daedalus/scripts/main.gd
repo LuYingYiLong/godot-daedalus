@@ -1,7 +1,7 @@
 @tool
 extends VBoxContainer
 
-const BACKEND_URL: String = "ws://localhost:8080"
+const DEFAULT_BACKEND_URL: String = "ws://localhost:8080"
 const USER_MESSAGE_ITEM_SCENE: PackedScene = preload("uid://c0qgg77075lmq")
 const ASSISTANT_MARKDOWN_ITEM_SCENE: PackedScene = preload("uid://c3s4jlxtm21ci")
 const TOOL_CALL_ITEM_SCENE: PackedScene = preload("uid://c2a5o7qi58fus")
@@ -9,6 +9,10 @@ const SESSION_ITEM_SCENE: PackedScene = preload("uid://bic1etsxo1epd")
 const TODO_ITEM_SCENE: PackedScene = preload("uid://d3i7c6i2shbyl")
 const CONTEXT_POPUP_MENU_UID: String = "uid://brjsrkaconcvu"
 const CONTEXT_ICON_DIR: String = "res://addons/godot_daedalus/assets/icons"
+const CONFIG_BACKEND_URL_SETTING: String = "godot_daedalus/backend_url"
+const CONFIG_MODEL_ID_SETTING: String = "godot_daedalus/model_id"
+const CONFIG_APPROVAL_MODE_SETTING: String = "godot_daedalus/approval_mode"
+const CONFIG_CUSTOM_INSTRUCTIONS_SETTING: String = "godot_daedalus/custom_instructions"
 const CONNECTED_ICON: Texture2D = preload("uid://1eh7wxaewfje")
 const CONNECT_FAILED_ICON: Texture2D = preload("uid://chihcwe7t0f2g")
 const DISCONNECTED_ICON: Texture2D = preload("uid://cq15q550jtb21")
@@ -46,6 +50,12 @@ const APPROVAL_MODE_NAMES: Array[String] = [
 	"Manual",
 	"Auto Safe",
 	"Read Only"
+]
+
+const APPROVAL_MODE_IDS: Array[String] = [
+	"manual",
+	"auto-safe",
+	"read-only"
 ]
 
 @onready var workspace_filter_button: OptionButton = %WorkspaceFilterButton
@@ -128,6 +138,10 @@ var workflow_phase_nodes_by_id: Dictionary[String, Node]
 var latest_context_info: Dictionary
 var context_popup_menu: PopupPanel
 var context_popup_open_after_info: bool
+var backend_url: String = DEFAULT_BACKEND_URL
+var custom_instructions: String
+var pending_provider_config_api_key: String
+var pending_provider_config_save_after_connect: bool
 
 
 func _ready() -> void:
@@ -136,6 +150,7 @@ func _ready() -> void:
 	text_edit.hide()
 	boot_splash.show()
 	_setup_options()
+	_load_frontend_config()
 	_setup_timeline_containers()
 	_connect_timeline_signals()
 	_clear_template_items()
@@ -156,7 +171,7 @@ func _process(_delta: float) -> void:
 	elif state == WebSocketPeer.STATE_CLOSED and socket_ready:
 		socket_ready = false
 		status_button.icon = DISCONNECTED_ICON
-		status_button.tooltip_text = _format_socket_close_tooltip("Disconnected")
+		status_button.tooltip_text = "%s. Click to reconnect." % _format_socket_close_tooltip("Disconnected")
 		_update_send_state()
 	elif state == WebSocketPeer.STATE_CLOSED and is_connecting:
 		_retry_backend_connection()
@@ -191,6 +206,74 @@ func _setup_options() -> void:
 	approval_mode_button.clear()
 	for index: int in range(APPROVAL_MODE_NAMES.size()):
 		approval_mode_button.add_item(APPROVAL_MODE_NAMES[index], index)
+
+
+func _load_frontend_config() -> void:
+	var editor_settings: EditorSettings = _get_editor_settings()
+	if editor_settings == null:
+		return
+
+	_ensure_frontend_setting(editor_settings, CONFIG_BACKEND_URL_SETTING, DEFAULT_BACKEND_URL)
+	_ensure_frontend_setting(editor_settings, CONFIG_MODEL_ID_SETTING, MODEL_IDS[0])
+	_ensure_frontend_setting(editor_settings, CONFIG_APPROVAL_MODE_SETTING, APPROVAL_MODE_IDS[0])
+	_ensure_frontend_setting(editor_settings, CONFIG_CUSTOM_INSTRUCTIONS_SETTING, "")
+
+	backend_url = _normalize_backend_url(str(editor_settings.get_setting(CONFIG_BACKEND_URL_SETTING)))
+	custom_instructions = str(editor_settings.get_setting(CONFIG_CUSTOM_INSTRUCTIONS_SETTING)).strip_edges()
+	if not _select_model_id(str(editor_settings.get_setting(CONFIG_MODEL_ID_SETTING))):
+		_select_model_id(MODEL_IDS[0])
+	if not _select_approval_mode(str(editor_settings.get_setting(CONFIG_APPROVAL_MODE_SETTING))):
+		_select_approval_mode(APPROVAL_MODE_IDS[0])
+
+
+func _ensure_frontend_setting(editor_settings: EditorSettings, setting_name: String, default_value: Variant) -> void:
+	if not editor_settings.has_setting(setting_name):
+		editor_settings.set_setting(setting_name, default_value)
+	editor_settings.set_initial_value(setting_name, default_value, false)
+
+
+func _save_frontend_setting(setting_name: String, value: Variant) -> void:
+	var editor_settings: EditorSettings = _get_editor_settings()
+	if editor_settings == null:
+		return
+
+	if not editor_settings.has_setting(setting_name):
+		editor_settings.set_setting(setting_name, value)
+		editor_settings.set_initial_value(setting_name, value, false)
+	editor_settings.set_setting(setting_name, value)
+
+
+func _get_editor_settings() -> EditorSettings:
+	if not Engine.is_editor_hint():
+		return null
+
+	return EditorInterface.get_editor_settings()
+
+
+func _normalize_backend_url(url: String) -> String:
+	var normalized_url: String = url.strip_edges()
+	if normalized_url.is_empty():
+		return DEFAULT_BACKEND_URL
+
+	return normalized_url
+
+
+func _select_model_id(model_id: String) -> bool:
+	for index: int in range(MODEL_IDS.size()):
+		if MODEL_IDS[index] == model_id:
+			model_button.select(index)
+			return true
+
+	return false
+
+
+func _select_approval_mode(approval_mode: String) -> bool:
+	for index: int in range(APPROVAL_MODE_IDS.size()):
+		if APPROVAL_MODE_IDS[index] == approval_mode:
+			approval_mode_button.select(index)
+			return true
+
+	return false
 
 
 func _clear_template_items() -> void:
@@ -254,10 +337,10 @@ func _connect_to_backend() -> void:
 	socket = WebSocketPeer.new()
 	socket.inbound_buffer_size = WEBSOCKET_BUFFER_SIZE
 	socket.outbound_buffer_size = WEBSOCKET_BUFFER_SIZE
-	var connect_error: Error = socket.connect_to_url(BACKEND_URL)
+	var connect_error: Error = socket.connect_to_url(backend_url)
 	if connect_error != OK:
 		status_button.icon = CONNECT_FAILED_ICON
-		status_button.tooltip_text = "Connect failed: %d" % connect_error
+		status_button.tooltip_text = "Connect failed: %d. Click to reconnect." % connect_error
 		_retry_backend_connection()
 		return
 	
@@ -269,8 +352,8 @@ func _retry_backend_connection() -> void:
 	if connection_attempts >= MAX_CONNECT_ATTEMPTS:
 		is_connecting = false
 		status_button.icon = CONNECT_FAILED_ICON
-		status_button.tooltip_text = "Connect failed"
-		boot_splash.call("show_error", "Cannot connect to Daedalus backend", "请确认后端已启动：npm run dev\n地址：%s" % BACKEND_URL)
+		status_button.tooltip_text = "Connect failed. Click to reconnect."
+		boot_splash.call("show_error", "Cannot connect to Daedalus backend", "请确认后端已启动：npm run dev\n地址：%s" % backend_url)
 		return
 
 	is_connecting = false
@@ -290,11 +373,25 @@ func _on_socket_opened() -> void:
 	_show_session_list_viewer()
 	text_edit.show()
 	_send_environment_config()
-	_load_provider_config()
+	if pending_provider_config_save_after_connect:
+		var deferred_api_key: String = pending_provider_config_api_key
+		pending_provider_config_api_key = ""
+		pending_provider_config_save_after_connect = false
+		_save_provider_config_to_backend(deferred_api_key)
+	else:
+		_load_provider_config()
+	_apply_approval_mode_to_backend()
 
 
 func _on_boot_splash_reconnect_requested() -> void:
 	_start_backend_connection_attempts()
+
+
+func _on_status_button_pressed() -> void:
+	if socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		return
+
+	_restart_backend_connection()
 
 
 func _load_provider_config() -> void:
@@ -318,6 +415,32 @@ func _get_selected_model_id() -> String:
 		return MODEL_IDS[0]
 
 	return MODEL_IDS[selected_index]
+
+
+func _get_selected_approval_mode() -> String:
+	var selected_index: int = approval_mode_button.selected
+	if selected_index < 0 or selected_index >= APPROVAL_MODE_IDS.size():
+		return APPROVAL_MODE_IDS[0]
+
+	return APPROVAL_MODE_IDS[selected_index]
+
+
+func _apply_model_config_to_backend() -> void:
+	if not _is_socket_open():
+		return
+
+	var params: Dictionary[String, Variant] = {
+		"provider": "deepseek",
+		"model": _get_selected_model_id()
+	}
+	_send_request("provider.config.set", params, "provider-config-set")
+
+
+func _apply_approval_mode_to_backend() -> void:
+	if not _is_socket_open():
+		return
+
+	_send_request("approval.mode.set", { "mode": _get_selected_approval_mode() }, "approval-mode-set")
 
 
 func _on_back_button_pressed() -> void:
@@ -356,6 +479,22 @@ func _on_session_option_button_item_selected(index: int) -> void:
 	var session_id: String = str(session_option_button.get_item_metadata(index))
 	if not session_id.is_empty():
 		_open_session(session_id)
+
+
+func _on_model_button_item_selected(index: int) -> void:
+	if index < 0 or index >= MODEL_IDS.size():
+		return
+
+	_save_frontend_setting(CONFIG_MODEL_ID_SETTING, MODEL_IDS[index])
+	_apply_model_config_to_backend()
+
+
+func _on_approval_mode_button_item_selected(index: int) -> void:
+	if index < 0 or index >= APPROVAL_MODE_IDS.size():
+		return
+
+	_save_frontend_setting(CONFIG_APPROVAL_MODE_SETTING, APPROVAL_MODE_IDS[index])
+	_apply_approval_mode_to_backend()
 
 
 func _on_send_button_pressed() -> void:
@@ -444,19 +583,23 @@ func _send_chat_text(message_text: String) -> void:
 	_append_timeline_entry("user", active_stream_request_id, message_text)
 	_schedule_timeline_render(should_follow_bottom)
 
+	var chat_params: Dictionary[String, Variant] = {
+		"message": message_text,
+		"promptId": "godot.assistant",
+		"options": {
+			"stream": true,
+			"toolBudget": "project_edit",
+			"workflow": "llm_planned"
+		}
+	}
+	if not custom_instructions.is_empty():
+		chat_params["systemPrompt"] = custom_instructions
+
 	var payload: Dictionary[String, Variant] = {
 		"type": "request",
 		"id": active_stream_id,
 		"method": "ai.chat",
-		"params": {
-			"message": message_text,
-			"promptId": "godot.assistant",
-			"options": {
-				"stream": true,
-				"toolBudget": "project_edit",
-				"workflow": "auto"
-			}
-		}
+		"params": chat_params
 	}
 
 	var send_error: Error = socket.send_text(JSON.stringify(payload))
@@ -798,6 +941,7 @@ func _render_workspace_group(workspace_id: String) -> void:
 
 	var label: Label = Label.new()
 	label.text = "%s  (%d)" % [_format_workspace_group_text(workspace_id), matching_session_ids.size()]
+	label.theme_type_variation = &"HeaderSmall"
 	session_list.add_child(label)
 
 	for session_id: String in matching_session_ids:
@@ -889,6 +1033,7 @@ func _apply_session_metadata(metadata: Dictionary) -> void:
 func _apply_provider_config_status(status: Dictionary) -> void:
 	provider_config_status = status
 	var configured: bool = bool(status.get("configured", false))
+	var model_value: Variant = status.get("model", null)
 
 	if configured:
 		status_button.icon = CONNECTED_ICON
@@ -896,6 +1041,11 @@ func _apply_provider_config_status(status: Dictionary) -> void:
 	else:
 		status_button.icon = STAUTS_WARNING
 		status_button.tooltip_text = "Open settings and save DeepSeek API key"
+
+	if typeof(model_value) == TYPE_STRING and _select_model_id(str(model_value)):
+		_save_frontend_setting(CONFIG_MODEL_ID_SETTING, str(model_value))
+	else:
+		_apply_model_config_to_backend()
 
 	_update_send_state()
 
@@ -1901,11 +2051,11 @@ func _show_approval_dialog(event_data: Dictionary) -> void:
 
 	pending_approval_id = next_approval_id
 	var tool_name: String = str(event_data.get("toolName", event_data.get("llmToolName", "")))
-	approval_title_label.text = "Needs approval: %s" % tool_name
+	approval_title_label.text = "需要审批：%s" % _localize_tool_name_for_display(tool_name)
 	approval_description_label.text = "\n".join([
-		"Approval ID: `%s`" % pending_approval_id,
-		"Reason: %s" % str(event_data.get("reason", "")),
-		"Args:",
+		"审批 ID：`%s`" % pending_approval_id,
+		"原因：%s" % str(event_data.get("reason", "")),
+		"参数：",
 		_format_approval_args_preview(event_data.get("args", {}))
 	])
 	approval_dialog.visible = true
@@ -1939,6 +2089,45 @@ func _format_approval_args_preview(args_value: Variant) -> String:
 		return args_text
 
 	return "%s\n\n... 已截断显示，完整参数保存在后端审批队列中，批准时仍会执行完整内容。" % args_text.substr(0, APPROVAL_ARGS_PREVIEW_LIMIT)
+
+
+func _localize_tool_name_for_display(raw_tool_name: String) -> String:
+	match raw_tool_name:
+		"mcp_godot_read_text_file", "read_text_file":
+			return "读取文件"
+		"mcp_godot_search_text", "search_text":
+			return "搜索文本"
+		"mcp_godot_create_text_file", "mcp_godot_propose_create_text_file", "create_text_file":
+			return "创建文件"
+		"mcp_godot_overwrite_text_file", "mcp_godot_propose_overwrite_text_file", "overwrite_text_file":
+			return "覆盖文件"
+		"mcp_godot_replace_text_in_file", "mcp_godot_propose_replace_text_in_file", "replace_text_in_file":
+			return "替换文件内容"
+		"mcp_godot_delete_file", "delete_file":
+			return "删除文件"
+		"mcp_godot_inspect_scene_tree", "inspect_scene_tree":
+			return "查看场景树"
+		"mcp_godot_create_scene", "mcp_godot_propose_create_scene", "create_scene":
+			return "创建场景"
+		"mcp_godot_add_node_to_scene", "mcp_godot_propose_add_node_to_scene", "add_node_to_scene":
+			return "添加场景节点"
+		"mcp_godot_attach_script_to_node", "mcp_godot_propose_attach_script_to_node", "attach_script_to_node":
+			return "挂载脚本"
+		"mcp_godot_connect_signal_in_scene", "mcp_godot_propose_connect_signal_in_scene", "connect_signal_in_scene":
+			return "连接信号"
+		"mcp_godot_apply_scene_patch", "mcp_godot_propose_apply_scene_patch", "apply_scene_patch":
+			return "批量编辑场景"
+		"mcp_terminal_run_safe_preset", "run_safe_preset":
+			return "运行验证命令"
+		"mcp_terminal_run_write_preset", "run_write_preset":
+			return "运行写入命令"
+		"mcp_terminal_run_godot_scene_script", "run_godot_scene_script":
+			return "执行场景脚本"
+
+	if raw_tool_name.begins_with("mcp_"):
+		return "内部工具"
+
+	return raw_tool_name
 
 
 func _update_context_length(info: Dictionary) -> void:
@@ -2254,12 +2443,31 @@ func _on_settings_button_pressed() -> void:
 	
 	var settings_menu: AcceptDialog = packed_scene.instantiate()
 	add_child(settings_menu)
-	settings_menu.call("setup_provider_config", provider_config_status)
+	settings_menu.call("setup_provider_config", provider_config_status, _get_frontend_config_snapshot())
 	settings_menu.connect("provider_config_save_requested", Callable(self, "_on_settings_provider_config_save_requested"))
 	settings_menu.connect("provider_config_clear_requested", Callable(self, "_on_settings_provider_config_clear_requested"))
+	settings_menu.connect("frontend_config_save_requested", Callable(self, "_on_settings_frontend_config_save_requested"))
+
+
+func _get_frontend_config_snapshot() -> Dictionary:
+	return {
+		"backendUrl": backend_url,
+		"model": _get_selected_model_id(),
+		"approvalMode": _get_selected_approval_mode(),
+		"customInstructions": custom_instructions
+	}
 
 
 func _on_settings_provider_config_save_requested(api_key: String) -> void:
+	if not _is_socket_open():
+		pending_provider_config_api_key = api_key
+		pending_provider_config_save_after_connect = true
+		return
+
+	_save_provider_config_to_backend(api_key)
+
+
+func _save_provider_config_to_backend(api_key: String) -> void:
 	var params: Dictionary[String, Variant] = {
 		"provider": "deepseek",
 		"model": _get_selected_model_id()
@@ -2273,6 +2481,30 @@ func _on_settings_provider_config_save_requested(api_key: String) -> void:
 
 func _on_settings_provider_config_clear_requested() -> void:
 	_send_request("provider.config.clear", {}, "provider-config-clear")
+
+
+func _on_settings_frontend_config_save_requested(
+	next_backend_url: String,
+	next_custom_instructions: String
+) -> void:
+	var normalized_backend_url: String = _normalize_backend_url(next_backend_url)
+	var backend_url_changed: bool = normalized_backend_url != backend_url
+	backend_url = normalized_backend_url
+	custom_instructions = next_custom_instructions.strip_edges()
+	_save_frontend_setting(CONFIG_BACKEND_URL_SETTING, backend_url)
+	_save_frontend_setting(CONFIG_CUSTOM_INSTRUCTIONS_SETTING, custom_instructions)
+
+	if backend_url_changed:
+		_restart_backend_connection()
+
+
+func _restart_backend_connection() -> void:
+	context_popup_open_after_info = false
+	socket_ready = false
+	is_connecting = false
+	if socket.get_ready_state() != WebSocketPeer.STATE_CLOSED:
+		socket.close()
+	_start_backend_connection_attempts()
 
 
 func _exit_tree() -> void:

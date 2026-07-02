@@ -1,11 +1,2 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg id="_图层_1" data-name=" 图层 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
-  <defs>
-    <style>
-      .cls-1 {
-        fill: #e0e0e0;
-      }
-    </style>
-  </defs>
-  <path class="cls-1" d="M9.78,0c.49,0,.89.4.89.89v3.56c0,.49-.4.89-.89.89h-.89v1.78h7.11v1.78h-2.67v1.78h.89c.49,0,.89.4.89.89v3.56c0,.49-.4.89-.89.89h-3.56c-.49,0-.89-.4-.89-.89v-3.56c0-.49.4-.89.89-.89h.89v-1.78h-7.11v1.78h.89c.49,0,.89.4.89.89v3.56c0,.49-.4.89-.89.89H1.78c-.49,0-.89-.4-.89-.89v-3.65c.05-.45.43-.8.89-.8h.89v-1.78H0v-1.78h7.11v-1.78h-.89c-.49,0-.89-.4-.89-.89V.89c0-.49.4-.89.89-.89h3.56Z"/>
-</svg>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="16" height="16" version="1.1" viewBox="0 0 4.2333 4.2333" xml:space="preserve" id="svg1" sodipodi:docname="connected.svg" inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg"><defs id="defs1" /><sodipodi:namedview id="namedview1" pagecolor="#505050" bordercolor="#eeeeee" borderopacity="1" inkscape:showpageshadow="0" inkscape:pageopacity="0" inkscape:pagecheckerboard="0" inkscape:deskcolor="#505050" inkscape:zoom="48.5625" inkscape:cx="7.989704" inkscape:cy="11.294723" inkscape:window-width="1920" inkscape:window-height="991" inkscape:window-x="-9" inkscape:window-y="-9" inkscape:window-maximized="1" inkscape:current-layer="svg1" /><path class="cls-1" stroke="#e0e0e0" stroke-width=".26458" d="m2.5876-0.0052916c0.12965 0 0.23548 0.10583 0.23548 0.23548v0.94192c0 0.12965-0.10583 0.23548-0.23548 0.23548h-0.23548v0.47096h1.8812v0.47096h-0.70644v0.47096h0.23548c0.12965 0 0.23548 0.10583 0.23548 0.23548v0.94192c0 0.12965-0.10583 0.23548-0.23548 0.23548h-0.94192c-0.12965 0-0.23548-0.10583-0.23548-0.23548v-0.94192c0-0.12965 0.10583-0.23548 0.23548-0.23548h0.23548v-0.47096h-1.8812v0.47096h0.23548c0.12965 0 0.23548 0.10583 0.23548 0.23548v0.94192c0 0.12965-0.10583 0.23548-0.23548 0.23548h-0.93927c-0.12965 0-0.23548-0.10583-0.23548-0.23548v-0.96573c0.013229-0.11906 0.11377-0.21167 0.23548-0.21167h0.23548v-0.47096h-0.70644v-0.47096h1.8812v-0.47096h-0.23548c-0.12965 0-0.23548-0.10583-0.23548-0.23548v-0.94192c0-0.12965 0.10583-0.23548 0.23548-0.23548z" fill="#e0e0e0" id="path1" style="stroke:none" /></svg>

@@ -5,6 +5,7 @@ const DEFAULT_BACKEND_URL: String = "ws://localhost:8080"
 const USER_MESSAGE_ITEM_SCENE: PackedScene = preload("uid://c0qgg77075lmq")
 const ASSISTANT_MARKDOWN_ITEM_SCENE: PackedScene = preload("uid://c3s4jlxtm21ci")
 const TOOL_CALL_ITEM_SCENE: PackedScene = preload("uid://c2a5o7qi58fus")
+const STATUS_ITEM_SCENE: PackedScene = preload("uid://cljnln76ye4o5")
 const SESSION_ITEM_SCENE: PackedScene = preload("uid://bic1etsxo1epd")
 const TODO_ITEM_SCENE: PackedScene = preload("uid://d3i7c6i2shbyl")
 const CONTEXT_POPUP_MENU_UID: String = "uid://brjsrkaconcvu"
@@ -29,6 +30,7 @@ const TIMELINE_ESTIMATED_USER_HEIGHT: float = 88.0
 const TIMELINE_ESTIMATED_ASSISTANT_HEIGHT: float = 140.0
 const TIMELINE_ESTIMATED_TOOL_HEIGHT: float = 72.0
 const TIMELINE_ESTIMATED_THINKING_HEIGHT: float = 72.0
+const TIMELINE_ESTIMATED_STATUS_HEIGHT: float = 74.0
 const TIMELINE_MIN_ITEM_HEIGHT: float = 32.0
 const TIMELINE_BOTTOM_FOLLOW_THRESHOLD: float = 32.0
 const SESSION_OPEN_MESSAGE_LIMIT: int = 80
@@ -84,8 +86,14 @@ const APPROVAL_MODE_IDS: Array[String] = [
 
 var socket: WebSocketPeer = WebSocketPeer.new()
 var socket_ready: bool
+var has_connected_once: bool
 var connection_attempts: int
+var connection_attempt_generation: int
 var is_connecting: bool
+var backend_recovery_mode: bool
+var restore_session_after_reconnect_id: String
+var connection_status_entry_id: String
+var pending_recovery_status_after_session_open: bool
 var request_id: int
 var active_stream_id: String
 var active_session_id: String
@@ -173,10 +181,7 @@ func _process(_delta: float) -> void:
 			_on_socket_opened()
 		_receive_messages()
 	elif state == WebSocketPeer.STATE_CLOSED and socket_ready:
-		socket_ready = false
-		status_button.icon = DISCONNECTED_ICON
-		status_button.tooltip_text = "%s. Click to reconnect." % _format_socket_close_tooltip("Disconnected")
-		_update_send_state()
+		_handle_socket_closed_after_ready()
 	elif state == WebSocketPeer.STATE_CLOSED and is_connecting:
 		_retry_backend_connection()
 
@@ -324,15 +329,22 @@ func _on_timeline_scroll_value_changed(_value: float) -> void:
 	_schedule_timeline_render(false)
 
 
-func _start_backend_connection_attempts() -> void:
+func _start_backend_connection_attempts(show_boot_screen: bool = true, recovery_mode: bool = false) -> void:
 	connection_attempts = 0
+	connection_attempt_generation += 1
 	is_connecting = true
 	socket_ready = false
-	boot_splash.show()
-	boot_splash.call("show_connecting")
-	session_list_viewer.hide()
-	background_context_viewer.hide()
-	text_edit.hide()
+	backend_recovery_mode = recovery_mode
+	if not recovery_mode:
+		restore_session_after_reconnect_id = ""
+		pending_recovery_status_after_session_open = false
+		connection_status_entry_id = ""
+	if show_boot_screen:
+		boot_splash.show()
+		boot_splash.call("show_connecting")
+		session_list_viewer.hide()
+		background_context_viewer.hide()
+		text_edit.hide()
 	_connect_to_backend()
 
 
@@ -345,11 +357,25 @@ func _connect_to_backend() -> void:
 	if connect_error != OK:
 		status_button.icon = CONNECT_FAILED_ICON
 		status_button.tooltip_text = "Connect failed: %d. Click to reconnect." % connect_error
+		if backend_recovery_mode:
+			_upsert_connection_status_entry(
+				"error",
+				"连接失败",
+				"无法连接到 Daedalus 后端：%d\n地址：%s" % [connect_error, backend_url],
+				"重试",
+				"reconnect"
+			)
 		_retry_backend_connection()
 		return
 	
 	status_button.icon = DISCONNECTED_ICON
 	status_button.tooltip_text = "Connecting... (%d/%d)" % [connection_attempts, MAX_CONNECT_ATTEMPTS]
+	if backend_recovery_mode:
+		_upsert_connection_status_entry(
+			"reconnecting",
+			"正在重连",
+			"正在重新连接 Daedalus 后端（%d/%d）\n地址：%s" % [connection_attempts, MAX_CONNECT_ATTEMPTS, backend_url]
+		)
 
 
 func _retry_backend_connection() -> void:
@@ -357,11 +383,23 @@ func _retry_backend_connection() -> void:
 		is_connecting = false
 		status_button.icon = CONNECT_FAILED_ICON
 		status_button.tooltip_text = "Connect failed. Click to reconnect."
-		boot_splash.call("show_error", "Cannot connect to Daedalus backend", "请确认后端已启动：npm run dev\n地址：%s" % backend_url)
+		if backend_recovery_mode:
+			_upsert_connection_status_entry(
+				"error",
+				"重连失败",
+				"已经尝试 %d 次，仍无法连接后端。\n请确认后端已启动：npm run dev\n地址：%s" % [MAX_CONNECT_ATTEMPTS, backend_url],
+				"重试",
+				"reconnect"
+			)
+		else:
+			boot_splash.call("show_error", "Cannot connect to Daedalus backend", "请确认后端已启动：npm run dev\n地址：%s" % backend_url)
 		return
 
 	is_connecting = false
+	var retry_generation: int = connection_attempt_generation
 	await get_tree().create_timer(CONNECT_RETRY_SECONDS).timeout
+	if retry_generation != connection_attempt_generation:
+		return
 	if socket_ready:
 		return
 
@@ -370,11 +408,18 @@ func _retry_backend_connection() -> void:
 
 
 func _on_socket_opened() -> void:
+	var was_recovering: bool = backend_recovery_mode
+	var session_id_to_restore: String = restore_session_after_reconnect_id
 	is_connecting = false
+	backend_recovery_mode = false
+	has_connected_once = true
 	status_button.icon = CONNECTED_ICON
 	status_button.tooltip_text = "Connected"
 	boot_splash.hide()
-	_show_session_list_viewer()
+	if not was_recovering:
+		_show_session_list_viewer()
+	elif active_session_id.is_empty():
+		_show_session_list_viewer()
 	text_edit.show()
 	_send_environment_config()
 	if pending_provider_config_save_after_connect:
@@ -385,6 +430,18 @@ func _on_socket_opened() -> void:
 	else:
 		_load_provider_config()
 	_apply_approval_mode_to_backend()
+	_refresh_session_and_archive_lists()
+	if was_recovering:
+		_upsert_connection_status_entry(
+			"success",
+			"连接已恢复",
+			"已重新连接后端，正在恢复当前会话。"
+		)
+		if not session_id_to_restore.is_empty():
+			pending_recovery_status_after_session_open = true
+			_send_request("session.open", { "sessionId": session_id_to_restore, "limit": SESSION_OPEN_MESSAGE_LIMIT }, "session-recover-open")
+		else:
+			_finalize_recovery_status(false)
 
 
 func _on_boot_splash_reconnect_requested() -> void:
@@ -395,7 +452,53 @@ func _on_status_button_pressed() -> void:
 	if socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
 		return
 
-	_restart_backend_connection()
+	_restart_backend_connection(has_connected_once)
+
+
+func _handle_socket_closed_after_ready() -> void:
+	var close_detail: String = _format_socket_close_tooltip("Disconnected")
+	var session_id_to_restore: String = active_session_id
+	var was_streaming: bool = not active_stream_id.is_empty()
+	socket_ready = false
+	status_button.icon = DISCONNECTED_ICON
+	status_button.tooltip_text = "%s. Reconnecting..." % close_detail
+	_update_send_state()
+	_begin_backend_recovery(close_detail, session_id_to_restore, was_streaming)
+
+
+func _begin_backend_recovery(close_detail: String, session_id_to_restore: String, was_streaming: bool) -> void:
+	restore_session_after_reconnect_id = session_id_to_restore
+	pending_recovery_status_after_session_open = false
+	var details: String = "%s\n正在自动重连 Daedalus 后端。" % close_detail
+	if was_streaming:
+		_stop_active_stream_locally(true)
+		details += "\n当前回复已在本地暂停；恢复后可以直接发送“继续”。"
+	_upsert_connection_status_entry("warning", "连接中断", details)
+	_start_backend_connection_attempts(false, true)
+
+
+func _handle_recovered_session_open(result_dictionary: Dictionary) -> void:
+	var metadata_value: Variant = result_dictionary.get("metadata", {})
+	if typeof(metadata_value) == TYPE_DICTIONARY:
+		_apply_session_metadata(metadata_value as Dictionary)
+	_apply_latest_workflow_snapshot(result_dictionary)
+	_send_request("session.info", {}, "session-info")
+	_finalize_recovery_status(true)
+
+
+func _finalize_recovery_status(session_restored: bool) -> void:
+	pending_recovery_status_after_session_open = false
+	restore_session_after_reconnect_id = ""
+	var details: String = "已重新连接 Daedalus 后端。"
+	if session_restored:
+		details += "\n当前会话已恢复；如果上一条回复被中断，可以继续发送。"
+	_upsert_connection_status_entry("success", "连接已恢复", details)
+	connection_status_entry_id = ""
+
+
+func _on_status_item_action_requested(action_id: String) -> void:
+	if action_id == "reconnect":
+		_restart_backend_connection(true)
 
 
 func _load_provider_config() -> void:
@@ -775,6 +878,16 @@ func _handle_response(message: Dictionary) -> void:
 			context_popup_open_after_info = false
 		if str(message.get("id", "")).begins_with("session-timeline"):
 			timeline_loading_before = false
+		if str(message.get("id", "")).begins_with("session-recover-open"):
+			pending_recovery_status_after_session_open = false
+			restore_session_after_reconnect_id = ""
+			_upsert_connection_status_entry(
+				"warning",
+				"连接已恢复",
+				"后端已重新连接，但当前会话恢复失败。可以手动从会话列表重新打开。"
+			)
+			connection_status_entry_id = ""
+			return
 		if str(message.get("id", "")) == active_stream_id:
 			_show_response_error(message)
 			active_stream_id = ""
@@ -810,6 +923,8 @@ func _handle_response(message: Dictionary) -> void:
 			var next_message: String = pending_chat_text
 			pending_chat_text = ""
 			_send_chat_text(next_message)
+	elif bool(result_dictionary.get("opened", false)) and str(message.get("id", "")).begins_with("session-recover-open"):
+		_handle_recovered_session_open(result_dictionary)
 	elif bool(result_dictionary.get("opened", false)):
 		var metadata: Variant = result_dictionary.get("metadata", {})
 		if typeof(metadata) == TYPE_DICTIONARY:
@@ -1238,6 +1353,7 @@ func _clear_chat_items() -> void:
 	active_thinking_entry_id = ""
 	active_stream_request_id = ""
 	active_stream_started_at_utc = ""
+	connection_status_entry_id = ""
 	active_assistant_text = ""
 	pending_assistant_delta_text = ""
 	pending_assistant_delta_queued = false
@@ -1529,6 +1645,45 @@ func _append_timeline_entry(entry_type: String, request_id: String, content: Str
 	return entry_id
 
 
+func _upsert_connection_status_entry(
+	status_text: String,
+	title_text: String,
+	detail_text: String,
+	action_label: String = "",
+	action_id: String = ""
+) -> void:
+	var metadata: Dictionary = {
+		"status": status_text,
+		"title": title_text,
+		"detail": detail_text,
+		"action_label": action_label,
+		"action_id": action_id
+	}
+
+	if connection_status_entry_id.is_empty() or _find_timeline_entry_index(connection_status_entry_id) < 0:
+		connection_status_entry_id = _append_timeline_entry(
+			"status",
+			"",
+			detail_text,
+			"connection-status-%d" % Time.get_ticks_msec(),
+			metadata
+		)
+	else:
+		var index: int = _find_timeline_entry_index(connection_status_entry_id)
+		if index >= 0:
+			var entry: Dictionary = timeline_entries[index]
+			for metadata_key: Variant in metadata.keys():
+				entry[str(metadata_key)] = metadata[metadata_key]
+			entry["content"] = detail_text
+			entry["height_estimate"] = _estimate_timeline_entry_height("status", detail_text)
+			entry["height_actual"] = 0.0
+			timeline_entries[index] = entry
+			_mark_timeline_height_dirty(index)
+
+	var should_follow_bottom: bool = _should_follow_timeline_updates()
+	_schedule_timeline_render(should_follow_bottom)
+
+
 func _append_event_to_timeline(event_name: String, event_data: Dictionary, request_id: String) -> void:
 	if event_name == "ai.thinking.delta":
 		var delta_text: String = str(event_data.get("text", ""))
@@ -1685,6 +1840,8 @@ func _estimate_timeline_entry_height(entry_type: String, content: String) -> flo
 		return TIMELINE_ESTIMATED_THINKING_HEIGHT
 	if entry_type == "tool":
 		return TIMELINE_ESTIMATED_TOOL_HEIGHT
+	if entry_type == "status":
+		return TIMELINE_ESTIMATED_STATUS_HEIGHT
 
 	return 96.0
 
@@ -1861,6 +2018,8 @@ func _instantiate_timeline_entry_node(entry: Dictionary, index: int) -> Node:
 		node = TOOL_CALL_ITEM_SCENE.instantiate()
 	elif entry_type == "tool":
 		node = TOOL_CALL_ITEM_SCENE.instantiate()
+	elif entry_type == "status":
+		node = STATUS_ITEM_SCENE.instantiate()
 	else:
 		node = ASSISTANT_MARKDOWN_ITEM_SCENE.instantiate()
 
@@ -1899,6 +2058,17 @@ func _configure_timeline_entry_node(node: Node, entry: Dictionary, _index: int) 
 		var tool_call_id: String = str(entry.get("tool_call_id", ""))
 		if not tool_call_id.is_empty():
 			tool_items_by_call_id[tool_call_id] = node
+	elif entry_type == "status":
+		node.call(
+			"setup",
+			str(entry.get("status", "message")),
+			str(entry.get("title", "")),
+			str(entry.get("detail", "")),
+			str(entry.get("action_label", "")),
+			str(entry.get("action_id", ""))
+		)
+		if node.has_signal("action_requested") and not node.is_connected("action_requested", _on_status_item_action_requested):
+			node.connect("action_requested", _on_status_item_action_requested)
 	else:
 		node.call("setup", str(entry.get("content", "")))
 
@@ -2773,13 +2943,13 @@ func _on_settings_frontend_config_save_requested(
 		_restart_backend_connection()
 
 
-func _restart_backend_connection() -> void:
+func _restart_backend_connection(recovery_mode: bool = false) -> void:
 	context_popup_open_after_info = false
 	socket_ready = false
 	is_connecting = false
 	if socket.get_ready_state() != WebSocketPeer.STATE_CLOSED:
 		socket.close()
-	_start_backend_connection_attempts()
+	_start_backend_connection_attempts(not recovery_mode, recovery_mode)
 
 
 func _exit_tree() -> void:

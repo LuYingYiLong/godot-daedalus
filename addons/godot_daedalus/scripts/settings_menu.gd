@@ -7,16 +7,22 @@ signal frontend_config_save_requested(backend_url: String, custom_instructions: 
 signal archived_session_restore_requested(session_id: String)
 signal archived_session_delete_requested(session_id: String)
 
+@onready var tab_container: TabContainer = %TabContainer
 @onready var provider_option_button: OptionButton = %ProviderOptionButton
 @onready var backend_url_line_edit: LineEdit = %BackendURLLineEdit
 @onready var deepseek_api_key_line_edit: LineEdit = %DeepseekAPIKeyLineEdit
 @onready var clear_deepseek_api_key_button: Button = %ClearDeepseekAPIKeyButton
+@onready var custom_instructions_label: Label = %CustomInstructionsLabel
+@onready var custom_instructions_warning_button: Button = %CustomInstructionsWarningButton
 @onready var custom_instructions_edit: TextEdit = %CustomInstructionsEdit
 @onready var archived_workspace_filter_option_button: OptionButton = %WorkspaceFilterOptionButton
 @onready var search_archived_chat_line_edit: LineEdit = %SearchArchivedChatLineEdit
+@onready var delete_all_archived_chats_button: Button = %DeleteAllArchivedChatsButton
 @onready var archived_chat_list: VBoxContainer = %ArchivedChatList
 
 const ARCHIVED_CHAT_ITEM_SCENE_UID: String = "uid://kyksk24wd7d3"
+const CUSTOM_INSTRUCTIONS_WARNING_CHARS: int = 4000
+const CUSTOM_INSTRUCTIONS_HEAVY_CHARS: int = 12000
 const EDITOR_TYPE: StringName = &"Editor"
 const ACCEPT_DIALOG_TYPE: StringName = &"AcceptDialog"
 const EDITOR_SETTINGS_DIALOG_TYPE: StringName = &"EditorSettingsDialog"
@@ -25,14 +31,25 @@ const BASE_STYLE_NAME: StringName = &"base_style"
 const BUTTONS_SEPARATION_CONSTANT: StringName = &"buttons_separation"
 const BUTTONS_MIN_WIDTH_CONSTANT: StringName = &"buttons_min_width"
 const BUTTONS_MIN_HEIGHT_CONSTANT: StringName = &"buttons_min_height"
+const CONFIRM_ACTION_NONE: StringName = &""
+const CONFIRM_ACTION_DELETE_ARCHIVED_SESSION: StringName = &"delete_archived_session"
+const CONFIRM_ACTION_DELETE_ALL_ARCHIVED_SESSIONS: StringName = &"delete_all_archived_sessions"
 
 var archived_sessions: Array[Dictionary] = []
 var archived_workspaces_by_id: Dictionary[String, Dictionary] = {}
 var archived_workspace_filter: String
 var archived_search_text: String
+var pending_confirmation_action: StringName = CONFIRM_ACTION_NONE
+var pending_delete_session_id: String
+var pending_delete_session_ids: Array[String] = []
+var archive_delete_confirmation_dialog: ConfirmationDialog
+var custom_instructions_warning_dialog: AcceptDialog
 
 
 func _ready() -> void:
+	tab_container.current_tab = 0
+	_update_custom_instructions_status()
+	_update_delete_all_archived_chats_button()
 	call_deferred(&"_apply_editor_dialog_theme")
 
 
@@ -40,6 +57,7 @@ func setup_provider_config(status: Dictionary, frontend_config: Dictionary = {})
 	var configured: bool = bool(status.get("configured", false))
 	backend_url_line_edit.text = str(frontend_config.get("backendUrl", "ws://localhost:8080"))
 	custom_instructions_edit.text = str(frontend_config.get("customInstructions", ""))
+	_update_custom_instructions_status()
 
 	if configured:
 		deepseek_api_key_line_edit.placeholder_text = "Set new API key"
@@ -73,6 +91,7 @@ func setup_archived_sessions(sessions: Array, workspaces: Array = []) -> void:
 
 	_populate_archived_workspace_filter()
 	_render_archived_sessions()
+	_update_delete_all_archived_chats_button()
 
 
 func _on_confirmed() -> void:
@@ -176,6 +195,8 @@ func _render_archived_sessions() -> void:
 		empty_label.theme_type_variation = &"LabelNoMargin"
 		archived_chat_list.add_child(empty_label)
 
+	_update_delete_all_archived_chats_button()
+
 
 func _does_archived_session_match_filters(metadata: Dictionary) -> bool:
 	if not archived_workspace_filter.is_empty() and str(metadata.get("workspaceId", "")) != archived_workspace_filter:
@@ -223,7 +244,17 @@ func _on_archived_chat_item_restore_requested(session_id: String) -> void:
 
 
 func _on_archived_chat_item_delete_requested(session_id: String) -> void:
-	archived_session_delete_requested.emit(session_id)
+	if session_id.is_empty():
+		return
+
+	var title_text: String = _get_archived_session_title(session_id)
+	var session_ids: Array[String] = [session_id]
+	_show_archive_delete_confirmation(
+		CONFIRM_ACTION_DELETE_ARCHIVED_SESSION,
+		"Delete archived chat?",
+		"Delete archived chat \"%s\" permanently?\n\nThis cannot be undone." % title_text,
+		session_ids
+	)
 
 
 func _apply_editor_dialog_theme() -> void:
@@ -291,3 +322,172 @@ func _is_in_edited_scene() -> bool:
 		return false
 
 	return edited_scene_root == self or edited_scene_root.is_ancestor_of(self)
+
+
+func _on_custom_instructions_warning_button_pressed() -> void:
+	if custom_instructions_warning_dialog != null and is_instance_valid(custom_instructions_warning_dialog):
+		custom_instructions_warning_dialog.popup_centered()
+		return
+
+	var custom_instructions_text: String = custom_instructions_edit.text.strip_edges()
+	var character_count: int = custom_instructions_text.length()
+	custom_instructions_warning_dialog = AcceptDialog.new()
+	custom_instructions_warning_dialog.title = "Custom instructions context"
+	var dialog_lines: PackedStringArray = [
+		"Custom instructions are active this turn and are sent with every chat request.",
+		"",
+		"Current size: %s",
+		"",
+		"Long instructions consume context before the conversation history is selected.",
+		"",
+		"Priority: backend/system rules > tool safety > project instruction files such as AGENTS.md > current chat request > custom instructions."
+	]
+	custom_instructions_warning_dialog.dialog_text = "\n".join(dialog_lines) % _format_character_count(character_count)
+	add_child(custom_instructions_warning_dialog)
+	custom_instructions_warning_dialog.confirmed.connect(Callable(self, "_on_custom_instructions_warning_dialog_closed"))
+	custom_instructions_warning_dialog.close_requested.connect(Callable(self, "_on_custom_instructions_warning_dialog_closed"))
+	custom_instructions_warning_dialog.popup_centered()
+
+
+func _on_delete_all_archived_chats_button_pressed() -> void:
+	if archived_sessions.is_empty():
+		return
+
+	var session_ids: Array[String] = []
+	for metadata: Dictionary in archived_sessions:
+		var session_id: String = str(metadata.get("id", ""))
+		if session_id.is_empty():
+			continue
+
+		session_ids.append(session_id)
+
+	if session_ids.is_empty():
+		return
+
+	_show_archive_delete_confirmation(
+		CONFIRM_ACTION_DELETE_ALL_ARCHIVED_SESSIONS,
+		"Delete all archived chats?",
+		"Delete all %d archived chats permanently?\n\nThis cannot be undone." % session_ids.size(),
+		session_ids
+	)
+
+
+func _on_custom_instructions_edit_text_changed() -> void:
+	_update_custom_instructions_status()
+
+
+func _update_custom_instructions_status() -> void:
+	if custom_instructions_edit == null or custom_instructions_warning_button == null:
+		return
+
+	var custom_instructions_text: String = custom_instructions_edit.text.strip_edges()
+	var character_count: int = custom_instructions_text.length()
+	var has_custom_instructions: bool = character_count > 0
+	var status_text: String = _format_custom_instructions_status(character_count)
+
+	custom_instructions_label.text = "Custom instructions (active this turn)" if has_custom_instructions else "Custom instructions"
+	custom_instructions_label.tooltip_text = status_text
+	custom_instructions_edit.tooltip_text = status_text
+	custom_instructions_warning_button.visible = character_count >= CUSTOM_INSTRUCTIONS_WARNING_CHARS
+	custom_instructions_warning_button.disabled = not has_custom_instructions
+	custom_instructions_warning_button.tooltip_text = status_text
+
+
+func _format_custom_instructions_status(character_count: int) -> String:
+	if character_count <= 0:
+		return "No custom instructions will be sent this turn."
+
+	var status_text: String = "Custom instructions are active this turn: %s." % _format_character_count(character_count)
+	if character_count >= CUSTOM_INSTRUCTIONS_HEAVY_CHARS:
+		return status_text + " This is very long and will consume a noticeable amount of context every request."
+	if character_count >= CUSTOM_INSTRUCTIONS_WARNING_CHARS:
+		return status_text + " This is long enough to affect context usage every request."
+
+	return status_text + " Priority: backend/system rules > tool safety > project instruction files > current chat request > custom instructions."
+
+
+func _format_character_count(character_count: int) -> String:
+	if character_count >= 1000:
+		return "%.1fk chars" % (float(character_count) / 1000.0)
+
+	return "%d chars" % character_count
+
+
+func _get_archived_session_title(session_id: String) -> String:
+	for metadata: Dictionary in archived_sessions:
+		if str(metadata.get("id", "")) == session_id:
+			var title_text: String = str(metadata.get("title", "Untitled")).strip_edges()
+			if not title_text.is_empty():
+				return title_text
+
+	return "Untitled"
+
+
+func _show_archive_delete_confirmation(
+	action: StringName,
+	title_text: String,
+	message_text: String,
+	session_ids: Array[String]
+) -> void:
+	if session_ids.is_empty():
+		return
+
+	_close_archive_delete_confirmation_dialog()
+	pending_confirmation_action = action
+	pending_delete_session_id = session_ids[0]
+	pending_delete_session_ids.clear()
+	for session_id: String in session_ids:
+		pending_delete_session_ids.append(session_id)
+
+	archive_delete_confirmation_dialog = ConfirmationDialog.new()
+	archive_delete_confirmation_dialog.title = title_text
+	archive_delete_confirmation_dialog.dialog_text = message_text
+	archive_delete_confirmation_dialog.ok_button_text = "Delete"
+	add_child(archive_delete_confirmation_dialog)
+	archive_delete_confirmation_dialog.confirmed.connect(Callable(self, "_on_archive_delete_confirmation_confirmed"))
+	archive_delete_confirmation_dialog.canceled.connect(Callable(self, "_on_archive_delete_confirmation_closed"))
+	archive_delete_confirmation_dialog.close_requested.connect(Callable(self, "_on_archive_delete_confirmation_closed"))
+	archive_delete_confirmation_dialog.popup_centered()
+
+
+func _on_archive_delete_confirmation_confirmed() -> void:
+	if pending_confirmation_action == CONFIRM_ACTION_DELETE_ARCHIVED_SESSION:
+		archived_session_delete_requested.emit(pending_delete_session_id)
+	elif pending_confirmation_action == CONFIRM_ACTION_DELETE_ALL_ARCHIVED_SESSIONS:
+		for session_id: String in pending_delete_session_ids:
+			archived_session_delete_requested.emit(session_id)
+
+	_on_archive_delete_confirmation_closed()
+
+
+func _on_archive_delete_confirmation_closed() -> void:
+	pending_confirmation_action = CONFIRM_ACTION_NONE
+	pending_delete_session_id = ""
+	pending_delete_session_ids.clear()
+	_close_archive_delete_confirmation_dialog()
+
+
+func _close_archive_delete_confirmation_dialog() -> void:
+	if archive_delete_confirmation_dialog == null or not is_instance_valid(archive_delete_confirmation_dialog):
+		archive_delete_confirmation_dialog = null
+		return
+
+	archive_delete_confirmation_dialog.queue_free()
+	archive_delete_confirmation_dialog = null
+
+
+func _on_custom_instructions_warning_dialog_closed() -> void:
+	if custom_instructions_warning_dialog == null or not is_instance_valid(custom_instructions_warning_dialog):
+		custom_instructions_warning_dialog = null
+		return
+
+	custom_instructions_warning_dialog.queue_free()
+	custom_instructions_warning_dialog = null
+
+
+func _update_delete_all_archived_chats_button() -> void:
+	if delete_all_archived_chats_button == null:
+		return
+
+	delete_all_archived_chats_button.disabled = archived_sessions.is_empty()
+	delete_all_archived_chats_button.tooltip_text = "Delete all archived chats permanently." if not archived_sessions.is_empty() else "No archived chats to delete."

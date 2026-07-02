@@ -3,6 +3,7 @@ extends MarginContainer
 
 @onready var header_container: VBoxContainer = $VBoxContainer/HeaderContainer
 @onready var elapsed_time_label: Label = %ElapsedTimeLabel
+@onready var body_container: VBoxContainer = %BodyContainer
 @onready var markdown_label: MarkdownLabel = %MarkdownLabel
 @onready var footer_container: HBoxContainer = %FooterContainer
 @onready var end_time_label: Label = %EndTimeLabel
@@ -51,7 +52,6 @@ func _set_completion_times(started_at_utc: String, completed_at_utc: String) -> 
 	if has_completed_time:
 		end_time_label.text = "Completed: %s" % _format_utc_time(normalized_completed_at)
 
-	elapsed_time_label.visible = has_elapsed_time
 	header_container.visible = has_elapsed_time
 	if has_elapsed_time:
 		var elapsed_seconds: int = maxi(0, _timestamp_to_unix(normalized_completed_at) - _timestamp_to_unix(normalized_started_at))

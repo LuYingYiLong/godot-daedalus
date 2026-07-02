@@ -14,6 +14,7 @@ script = ExtResource("1_assistant")
 layout_mode = 2
 
 [node name="HeaderContainer" type="VBoxContainer" parent="VBoxContainer" unique_id=600921039]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = -4
 
@@ -23,6 +24,10 @@ layout_mode = 2
 text = "Elapsed: {Time}"
 
 [node name="HSeparator" type="HSeparator" parent="VBoxContainer/HeaderContainer" unique_id=1508385575]
+layout_mode = 2
+
+[node name="BodyContainer" type="VBoxContainer" parent="VBoxContainer" unique_id=1596925126]
+unique_name_in_owner = true
 layout_mode = 2
 
 [node name="MarkdownLabel" type="MarkdownLabel" parent="VBoxContainer" unique_id=532096732]

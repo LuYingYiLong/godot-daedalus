@@ -13,6 +13,9 @@ extends Control
 @onready var medium_button: Button = %MediumButton
 @onready var hard_button: Button = %HardButton
 @onready var range_bar: ProgressBar = %RangeBar
+@onready var stats_panel: PanelContainer = %StatsPanel
+@onready var stats_close_btn: Button = %StatsCloseBtn
+@onready var stats_content: VBoxContainer = %StatsContent
 
 var _tween: Tween
 
@@ -33,10 +36,13 @@ const DIFFICULTY_CFG: Dictionary = {
 
 const CONFIG_PATH: String = "user://guess_number.cfg"
 const CONFIG_SECTION: String = "best"
+const STATS_PATH: String = "user://guess_number_stats.json"
 
 
 func _ready() -> void:
 	_load_records()
+	_load_stats()
+	_setup_stats_panel_style()
 	_update_difficulty_ui()
 	_setup_range_bar_style()
 	new_game()
@@ -63,6 +69,7 @@ func new_game() -> void:
 
 	_update_best_display()
 	_update_range_bar()
+	stats_panel.visible = false
 	input_field.grab_focus()
 
 
@@ -89,6 +96,7 @@ func _on_guess_pressed() -> void:
 		feedback_label.modulate = Color(1.0, 0.84, 0.0)
 		_animate_correct()
 		_try_save_best()
+		_record_game_result(attempts, true)
 		_end_game()
 		return
 
@@ -108,6 +116,7 @@ func _on_guess_pressed() -> void:
 	if attempts >= cfg["limit"]:
 		feedback_label.text = "😢 游戏结束！数字是 %d" % target_number
 		feedback_label.modulate = Color(0.5, 0.5, 0.5)
+		_record_game_result(attempts, false)
 		_end_game()
 
 	input_field.text = ""
@@ -249,7 +258,6 @@ func _update_range_bar() -> void:
 	var current: int = range_high - range_low
 	var progress: float = float(total - current) / total * 100.0
 	range_bar.value = clamp(progress, 0, 100)
-	# 随进度改变颜色：蓝 → 橙 → 红
 	if progress < 40:
 		range_bar.modulate = Color(0.2, 0.5, 0.9)
 	elif progress < 75:
@@ -303,3 +311,166 @@ func _update_best_display() -> void:
 		best_record_label.text = "🏆 最佳记录：%d 次" % best
 	else:
 		best_record_label.text = ""
+
+
+# ---------- 统计系统 ----------
+
+var _stats_data: Dictionary = {}
+
+
+func _setup_stats_panel_style() -> void:
+	# 半透明遮罩背景
+	var backdrop: StyleBoxFlat = StyleBoxFlat.new()
+	backdrop.bg_color = Color(0, 0, 0, 0.5)
+	stats_panel.add_theme_stylebox_override("panel", backdrop)
+
+	# 卡片背景
+	var card: StyleBoxFlat = StyleBoxFlat.new()
+	card.bg_color = Color(0.12, 0.12, 0.22, 0.95)
+	card.border_color = Color(0.35, 0.35, 0.55)
+	card.border_width_left = 1
+	card.border_width_top = 1
+	card.border_width_right = 1
+	card.border_width_bottom = 1
+	card.corner_radius_top_left = 12
+	card.corner_radius_top_right = 12
+	card.corner_radius_bottom_left = 12
+	card.corner_radius_bottom_right = 12
+	card.content_margin_left = 20
+	card.content_margin_top = 14
+	card.content_margin_right = 20
+	card.content_margin_bottom = 16
+
+	var stats_card_node: PanelContainer = stats_panel.get_node("StatsCenter/StatsCard") as PanelContainer
+	stats_card_node.add_theme_stylebox_override("panel", card)
+
+	# 关闭按钮样式
+	var btn_style: StyleBoxFlat = StyleBoxFlat.new()
+	btn_style.bg_color = Color(0.25, 0.25, 0.35)
+	btn_style.corner_radius_top_left = 4
+	btn_style.corner_radius_top_right = 4
+	btn_style.corner_radius_bottom_left = 4
+	btn_style.corner_radius_bottom_right = 4
+	btn_style.content_margin_left = 10
+	btn_style.content_margin_right = 10
+	btn_style.content_margin_top = 4
+	btn_style.content_margin_bottom = 4
+	stats_close_btn.add_theme_stylebox_override("normal", btn_style)
+	stats_close_btn.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85))
+
+
+func _load_stats() -> void:
+	if not FileAccess.file_exists(STATS_PATH):
+		_stats_data = _empty_stats_dict()
+		return
+	var file: FileAccess = FileAccess.open(STATS_PATH, FileAccess.READ)
+	if file == null:
+		_stats_data = _empty_stats_dict()
+		return
+	var text: String = file.get_as_text()
+	file.close()
+	var json: JSON = JSON.new()
+	var err: Error = json.parse(text)
+	if err != OK:
+		_stats_data = _empty_stats_dict()
+		return
+	var raw = json.get_data()
+	if typeof(raw) != TYPE_DICTIONARY:
+		_stats_data = _empty_stats_dict()
+		return
+	_stats_data = raw
+
+
+func _save_stats() -> void:
+	var file: FileAccess = FileAccess.open(STATS_PATH, FileAccess.WRITE)
+	if file == null:
+		return
+	var json: JSON = JSON.new()
+	file.store_string(json.stringify(_stats_data, "\t"))
+	file.close()
+
+
+func _empty_stats_dict() -> Dictionary:
+	return {"total_games": 0, "total_wins": 0, "easy": {"games": 0, "wins": 0, "total_guesses": 0}, "medium": {"games": 0, "wins": 0, "total_guesses": 0}, "hard": {"games": 0, "wins": 0, "total_guesses": 0}}
+
+
+func _record_game_result(guess_count: int, won: bool) -> void:
+	var key: String = _difficulty_key()
+	_stats_data["total_games"] = _stats_data.get("total_games", 0) + 1
+	if won:
+		_stats_data["total_wins"] = _stats_data.get("total_wins", 0) + 1
+	var diff_data: Dictionary = _stats_data.get(key, {})
+	diff_data["games"] = diff_data.get("games", 0) + 1
+	if won:
+		diff_data["wins"] = diff_data.get("wins", 0) + 1
+		diff_data["total_guesses"] = diff_data.get("total_guesses", 0) + guess_count
+	_stats_data[key] = diff_data
+	_save_stats()
+
+
+func _on_stats_pressed() -> void:
+	_populate_stats()
+	stats_panel.visible = true
+
+
+func _on_stats_close_pressed() -> void:
+	stats_panel.visible = false
+
+
+func _populate_stats() -> void:
+	for child in stats_content.get_children():
+		child.queue_free()
+
+	var total_games: int = _stats_data.get("total_games", 0)
+	var total_wins: int = _stats_data.get("total_wins", 0)
+	var win_rate: String = "0%"
+	if total_games > 0:
+		win_rate = "%d%%" % int(float(total_wins) / float(total_games) * 100)
+
+	# 总览行
+	_add_stat_line("📋 总对局数：%d    🏆 总胜场：%d    📈 胜率：%s" % [total_games, total_wins, win_rate], Color(0.9, 0.9, 0.9), 16)
+	_add_stat_separator()
+
+	# 各难度
+	for diff_key in ["easy", "medium", "hard"]:
+		var diff_data: Dictionary = _stats_data.get(diff_key, {})
+		var games: int = diff_data.get("games", 0)
+		var wins: int = diff_data.get("wins", 0)
+		var guesses: int = diff_data.get("total_guesses", 0)
+
+		var icon: String = {"easy": "🟢", "medium": "🟡", "hard": "🔴"}[diff_key]
+		var label_text: String
+		if games == 0:
+			label_text = "%s %s：暂无数据" % [icon, _diff_label(diff_key)]
+		else:
+			var rate: String = "%d%%" % int(float(wins) / float(games) * 100)
+			var avg: String = "暂无" if wins == 0 else "%.1f" % (float(guesses) / float(wins))
+			label_text = "%s %s：%d局  %d胜  %s  ⌀%s次" % [icon, _diff_label(diff_key), games, wins, rate, avg]
+
+		_add_stat_line(label_text, Color(0.75, 0.75, 0.8), 14)
+
+	_add_stat_separator()
+	_add_stat_line("💡 点击 ✕ 关闭面板", Color(0.5, 0.5, 0.6), 12)
+
+
+func _diff_label(key: String) -> String:
+	match key:
+		"easy":   return "简单"
+		"medium": return "中等"
+		"hard":   return "困难"
+	return key
+
+
+func _add_stat_line(text: String, color: Color, font_size: int) -> void:
+	var label: Label = Label.new()
+	label.text = text
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_color_override("font_color", color)
+	label.add_theme_font_size_override("font_size", font_size)
+	stats_content.add_child(label)
+
+
+func _add_stat_separator() -> void:
+	var sep: HSeparator = HSeparator.new()
+	sep.custom_minimum_size = Vector2(0, 8)
+	stats_content.add_child(sep)

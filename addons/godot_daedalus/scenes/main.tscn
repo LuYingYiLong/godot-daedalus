@@ -9,7 +9,7 @@
 [ext_resource type="Texture2D" uid="uid://0cxofwkakcm6" path="res://addons/godot_daedalus/assets/icons/stop.svg" id="4_gf3fo"]
 [ext_resource type="Texture2D" uid="uid://ciialjuucs081" path="res://addons/godot_daedalus/assets/icons/settings.svg" id="4_v6xl6"]
 [ext_resource type="PackedScene" uid="uid://dftctpgnf7byb" path="res://addons/godot_daedalus/scenes/boot_splash.tscn" id="5_boot"]
-[ext_resource type="Texture2D" uid="uid://cq15q550jtb21" path="res://addons/godot_daedalus/assets/icons/disconnected.svg" id="5_m2uxd"]
+[ext_resource type="Texture2D" uid="uid://1eh7wxaewfje" path="res://addons/godot_daedalus/assets/icons/connected.svg" id="6_kyybk"]
 [ext_resource type="Texture2D" uid="uid://ctpm83h33rpbq" path="res://addons/godot_daedalus/assets/icons/search.svg" id="6_m2uxd"]
 
 [node name="Main" type="VBoxContainer" unique_id=81601605]
@@ -22,6 +22,7 @@ layout_mode = 2
 
 [node name="BackButton" type="Button" parent="HeaderContainer" unique_id=1493988619]
 layout_mode = 2
+tooltip_text = "Back"
 theme_type_variation = &"FlatButton"
 icon = ExtResource("1_hv046")
 
@@ -49,15 +50,12 @@ visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 selected = 0
-item_count = 2
-popup/item_0/text = "/init"
+item_count = 1
+popup/item_0/text = "帮我写一个猜数字的小游戏"
 popup/item_0/id = 0
-popup/item_1/text = "帮我写一个猜数字的小游戏"
-popup/item_1/id = 1
 
 [node name="CreateNewSessionButton" type="Button" parent="HeaderContainer" unique_id=1073886672]
 unique_name_in_owner = true
-visible = false
 layout_mode = 2
 tooltip_text = "Create new session"
 theme_type_variation = &"FlatButton"
@@ -65,15 +63,16 @@ icon = ExtResource("3_vp1j8")
 
 [node name="SettingsButton" type="Button" parent="HeaderContainer" unique_id=1656396567]
 layout_mode = 2
+tooltip_text = "Settings"
 theme_type_variation = &"FlatButton"
 icon = ExtResource("4_v6xl6")
 
 [node name="StatusButton" type="Button" parent="HeaderContainer" unique_id=142072528]
 unique_name_in_owner = true
 layout_mode = 2
-tooltip_text = "Disconnected (1000). Click to reconnect."
+tooltip_text = "Provider configured"
 theme_type_variation = &"FlatButton"
-icon = ExtResource("5_m2uxd")
+icon = ExtResource("6_kyybk")
 
 [node name="SessionListViewer" type="VBoxContainer" parent="." unique_id=1116610413]
 unique_name_in_owner = true
@@ -100,6 +99,7 @@ size_flags_vertical = 3
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
+scroll_vertical = 320
 
 [node name="BackgroundContextContainer" type="VBoxContainer" parent="BackgroundContextViewer/ScrollContainer" unique_id=2046895021]
 unique_name_in_owner = true
@@ -243,7 +243,6 @@ unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Send"
 theme_type_variation = &"FlatButton"
-disabled = true
 icon = ExtResource("2_qsedr")
 
 [node name="StopButton" type="Button" parent="TextEdit/MarginContainer/VBoxContainer/HBoxContainer" unique_id=1281113533]
@@ -268,10 +267,9 @@ size_flags_vertical = 3
 [connection signal="pressed" from="HeaderContainer/CreateNewSessionButton" to="." method="_on_create_new_session_button_pressed"]
 [connection signal="pressed" from="HeaderContainer/SettingsButton" to="." method="_on_settings_button_pressed"]
 [connection signal="pressed" from="HeaderContainer/StatusButton" to="." method="_on_status_button_pressed"]
-[connection signal="mouse_entered" from="SessionListViewer/ScrollContainer/SessionList/SessionItem" to="SessionListViewer/ScrollContainer/SessionList/SessionItem" method="_on_mouse_entered"]
-[connection signal="mouse_exited" from="SessionListViewer/ScrollContainer/SessionList/SessionItem" to="SessionListViewer/ScrollContainer/SessionList/SessionItem" method="_on_mouse_exited"]
-[connection signal="mouse_entered" from="SessionListViewer/ScrollContainer/SessionList/@Button@23959" to="SessionListViewer/ScrollContainer/SessionList/@Button@23959" method="_on_mouse_entered"]
-[connection signal="mouse_exited" from="SessionListViewer/ScrollContainer/SessionList/@Button@23959" to="SessionListViewer/ScrollContainer/SessionList/@Button@23959" method="_on_mouse_exited"]
+[connection signal="mouse_entered" from="SessionListViewer/ScrollContainer/SessionList/@Button@76226" to="SessionListViewer/ScrollContainer/SessionList/@Button@76226" method="_on_mouse_entered"]
+[connection signal="mouse_exited" from="SessionListViewer/ScrollContainer/SessionList/@Button@76226" to="SessionListViewer/ScrollContainer/SessionList/@Button@76226" method="_on_mouse_exited"]
+[connection signal="pressed" from="SessionListViewer/ScrollContainer/SessionList/@Button@76226" to="SessionListViewer/ScrollContainer/SessionList/@Button@76226" method="_on_pressed"]
 [connection signal="pressed" from="BackgroundContextViewer/ApprovalDialog/VBoxContainer/HBoxContainer/ApproveButton" to="." method="_on_approve_button_pressed"]
 [connection signal="pressed" from="BackgroundContextViewer/ApprovalDialog/VBoxContainer/HBoxContainer/RejectButton" to="." method="_on_reject_button_pressed"]
 [connection signal="pressed" from="BackgroundContextViewer/ApprovalDialog/VBoxContainer/HBoxContainer/SkipButton" to="." method="_on_skip_approval_button_pressed"]

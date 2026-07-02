@@ -126,6 +126,8 @@ func _add_item_for_event(event_data: Dictionary) -> void:
 		_add_file_link_item(WRITE_ITEM_SCENE, event_data, "Write")
 	elif category == "search" or category == "docs":
 		_add_search_item(event_data)
+	elif category == "propose":
+		_add_unknown_item(str(event_data.get("title", "预览修改")), str(event_data.get("summary", _summarize_event(event_data))))
 	elif category == "terminal":
 		_add_terminal_item(event_data)
 	elif category == "scene" or target_kind == "scene":
@@ -395,25 +397,41 @@ func _localize_tool_name(raw_tool_name: String) -> String:
 			return "读取文件"
 		"mcp_godot_search_text":
 			return "搜索文本"
-		"mcp_godot_propose_create_text_file", "mcp_godot_create_text_file":
+		"mcp_godot_propose_create_text_file":
+			return "预览创建文件"
+		"mcp_godot_create_text_file":
 			return "创建文件"
-		"mcp_godot_propose_overwrite_text_file", "mcp_godot_overwrite_text_file":
+		"mcp_godot_propose_overwrite_text_file":
+			return "预览覆盖文件"
+		"mcp_godot_overwrite_text_file":
 			return "覆盖文件"
-		"mcp_godot_propose_replace_text_in_file", "mcp_godot_replace_text_in_file":
+		"mcp_godot_propose_replace_text_in_file":
+			return "预览替换文件内容"
+		"mcp_godot_replace_text_in_file":
 			return "替换文件内容"
 		"mcp_godot_delete_file":
 			return "删除文件"
 		"mcp_godot_inspect_scene_tree":
 			return "查看场景树"
-		"mcp_godot_propose_create_scene", "mcp_godot_create_scene":
+		"mcp_godot_propose_create_scene":
+			return "预览创建场景"
+		"mcp_godot_create_scene":
 			return "创建场景"
-		"mcp_godot_propose_add_node_to_scene", "mcp_godot_add_node_to_scene":
+		"mcp_godot_propose_add_node_to_scene":
+			return "预览添加场景节点"
+		"mcp_godot_add_node_to_scene":
 			return "添加场景节点"
-		"mcp_godot_propose_attach_script_to_node", "mcp_godot_attach_script_to_node":
+		"mcp_godot_propose_attach_script_to_node":
+			return "预览挂载脚本"
+		"mcp_godot_attach_script_to_node":
 			return "挂载脚本"
-		"mcp_godot_propose_connect_signal_in_scene", "mcp_godot_connect_signal_in_scene":
+		"mcp_godot_propose_connect_signal_in_scene":
+			return "预览连接信号"
+		"mcp_godot_connect_signal_in_scene":
 			return "连接信号"
-		"mcp_godot_propose_apply_scene_patch", "mcp_godot_apply_scene_patch":
+		"mcp_godot_propose_apply_scene_patch":
+			return "预览批量编辑场景"
+		"mcp_godot_apply_scene_patch":
 			return "批量编辑场景"
 		"mcp_terminal_get_capabilities":
 			return "读取终端能力"
@@ -433,6 +451,8 @@ func _localize_tool_name(raw_tool_name: String) -> String:
 func _infer_category(normalized_tool_name: String, target: Dictionary) -> String:
 	if normalized_tool_name.contains("search_text"):
 		return "search"
+	if normalized_tool_name.contains("propose_"):
+		return "propose"
 	if normalized_tool_name.begins_with("mcp_terminal_"):
 		if normalized_tool_name == "mcp_terminal_run_godot_scene_script":
 			return "scene"

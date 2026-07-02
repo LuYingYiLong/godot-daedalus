@@ -1,29 +1,55 @@
 [gd_scene format=3 uid="uid://cljnln76ye4o5"]
 
-[ext_resource type="Script" uid="uid://dmmiw7csuj8ni" path="res://addons/godot_daedalus/scripts/tool_call_item/status_item.gd" id="1_ipb1p"]
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_g7c3b"]
-bg_color = Color(0.94, 0, 0.04700018, 0.078431375)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.8, 0, 0, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
-corner_detail = 5
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_1brkv"]
+[ext_resource type="Script" uid="uid://dmmiw7csuj8ni" path="res://addons/godot_daedalus/scripts/tool_call_item/status_item.gd" id="1_status"]
+[ext_resource type="Texture2D" uid="uid://cq15q550jtb21" path="res://addons/godot_daedalus/assets/icons/disconnected.svg" id="2_g7c3b"]
 
 [node name="StatusItem" type="PanelContainer" unique_id=2127336286]
 offset_right = 427.0
-offset_bottom = 91.0
-script = ExtResource("1_ipb1p")
-error_panel = SubResource("StyleBoxFlat_g7c3b")
-message_panel = SubResource("StyleBoxFlat_1brkv")
+offset_bottom = 74.0
+theme_type_variation = &"PanelContainerTabbarInner"
+script = ExtResource("1_status")
 
-[node name="Label" type="Label" parent="." unique_id=503521128]
+[node name="MainContainer" type="HBoxContainer" parent="." unique_id=186847856]
+layout_mode = 2
+
+[node name="StatusIcon" type="TextureRect" parent="MainContainer" unique_id=1425659619]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(16, 16)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 0
+texture = ExtResource("2_g7c3b")
+expand_mode = 3
+stretch_mode = 5
+
+[node name="TextContainer" type="VBoxContainer" parent="MainContainer" unique_id=850813598]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="HeaderContainer" type="HBoxContainer" parent="MainContainer/TextContainer" unique_id=1106492126]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="MainContainer/TextContainer/HeaderContainer" unique_id=503521128]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"HeaderSmall"
+text_overrun_behavior = 3
+
+[node name="ActionButton" type="Button" parent="MainContainer/TextContainer/HeaderContainer" unique_id=383824315]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+tooltip_text = "Retry"
+mouse_filter = 1
+theme_type_variation = &"FlatButton"
+disabled = true
+
+[node name="DetailsLabel" type="Label" parent="MainContainer/TextContainer" unique_id=1350851250]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+autowrap_mode = 3
+
+[connection signal="pressed" from="MainContainer/TextContainer/HeaderContainer/ActionButton" to="." method="_on_action_button_pressed"]

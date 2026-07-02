@@ -106,6 +106,43 @@ theme_override_colors/font_color = Color(1.0, 0.84, 0.0, 1)
 text = "💡 提示"
 unique_name_in_owner = true
 
+[node name="StatsButton" type="Button" parent="CenterContainer/VBox"]
+text = "📊 统计"
+size_flags_horizontal = 4
+unique_name_in_owner = true
+
+[node name="StatsPanel" type="PanelContainer" parent="."]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+unique_name_in_owner = true
+
+[node name="StatsCenter" type="CenterContainer" parent="StatsPanel"]
+
+[node name="StatsCard" type="PanelContainer" parent="StatsPanel/StatsCenter"]
+custom_minimum_size = Vector2(380, 0)
+size_flags_horizontal = 4
+size_flags_vertical = 4
+
+[node name="StatsCardVBox" type="VBoxContainer" parent="StatsPanel/StatsCenter/StatsCard"]
+
+[node name="StatsHeaderRow" type="HBoxContainer" parent="StatsPanel/StatsCenter/StatsCard/StatsCardVBox"]
+size_flags_horizontal = 4
+
+[node name="StatsTitle" type="Label" parent="StatsPanel/StatsCenter/StatsCard/StatsCardVBox/StatsHeaderRow"]
+text = "📊 战绩统计"
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 22
+
+[node name="StatsCloseBtn" type="Button" parent="StatsPanel/StatsCenter/StatsCard/StatsCardVBox/StatsHeaderRow"]
+text = "✕"
+unique_name_in_owner = true
+
+[node name="StatsContent" type="VBoxContainer" parent="StatsPanel/StatsCenter/StatsCard/StatsCardVBox"]
+unique_name_in_owner = true
+size_flags_horizontal = 4
+
 [connection signal="pressed" from="CenterContainer/VBox/InputRow/GuessButton" to="." method="_on_guess_pressed"]
 [connection signal="pressed" from="CenterContainer/VBox/RestartButton" to="." method="_on_restart_pressed"]
 [connection signal="text_submitted" from="CenterContainer/VBox/InputRow/InputField" to="." method="_on_input_text_entered"]
@@ -113,3 +150,5 @@ unique_name_in_owner = true
 [connection signal="pressed" from="CenterContainer/VBox/DifficultyRow/MediumButton" to="." method="_on_medium_pressed"]
 [connection signal="pressed" from="CenterContainer/VBox/DifficultyRow/HardButton" to="." method="_on_hard_pressed"]
 [connection signal="pressed" from="CenterContainer/VBox/InputRow/HintButton" to="." method="_on_hint_pressed"]
+[connection signal="pressed" from="CenterContainer/VBox/StatsButton" to="." method="_on_stats_pressed"]
+[connection signal="pressed" from="StatsPanel/StatsCenter/StatsCard/StatsCardVBox/StatsHeaderRow/StatsCloseBtn" to="." method="_on_stats_close_pressed"]

@@ -4,6 +4,8 @@ extends MarginContainer
 const TOOL_CALL_ITEM_SCENE: PackedScene = preload("uid://c2a5o7qi58fus")
 const MARKDOWN_THEME: Theme = preload("uid://dhartxld7pqyb")
 const ELAPSED_UPDATE_INTERVAL_SECONDS: float = 1.0
+const STREAM_MARKDOWN_LAYOUT_FLUSH_MSEC: int = 96
+const STREAM_MARKDOWN_MAX_UNSTABLE_LINES: int = 12
 
 @onready var header_container: VBoxContainer = $VBoxContainer/HeaderContainer
 @onready var elapsed_time_label: Label = %ElapsedTimeLabel
@@ -207,9 +209,11 @@ func _ensure_current_markdown_label() -> MarkdownLabel:
 	current_markdown_label.content_margin = 8
 	current_markdown_label.context_menu_enabled = true
 	current_markdown_label.fit_content = true
+	current_markdown_label.scroll_active = false
 	current_markdown_label.streaming_enabled = true
 	current_markdown_label.deferred_layout_enabled = true
-	current_markdown_label.layout_flush_interval_msec = 33
+	current_markdown_label.max_unstable_lines = STREAM_MARKDOWN_MAX_UNSTABLE_LINES
+	current_markdown_label.layout_flush_interval_msec = STREAM_MARKDOWN_LAYOUT_FLUSH_MSEC
 	current_markdown_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	current_markdown_label.theme = MARKDOWN_THEME
 	body_container.add_child(current_markdown_label)

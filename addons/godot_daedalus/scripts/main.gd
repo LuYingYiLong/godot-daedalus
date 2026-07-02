@@ -66,8 +66,16 @@ const ADD_CONTEXT_SELECTED_NODES_ID: int = 1
 const ADD_CONTEXT_ACTIVE_SCENE_ID: int = 2
 const ADD_CONTEXT_FILE_ID: int = 3
 const ADD_CONTEXT_FOLDER_ID: int = 4
-const ADD_CONTEXT_CLEAR_UNPINNED_ID: int = 5
+const ADD_CONTEXT_SCRIPT_SELECTION_ID: int = 5
+const ADD_CONTEXT_FILESYSTEM_SELECTION_ID: int = 6
+const ADD_CONTEXT_CLEAR_UNPINNED_ID: int = 7
 const LIVE_EDITOR_SELECTION_CONTEXT_ID: String = "editor-selection-live"
+const LIVE_SCRIPT_SELECTION_CONTEXT_ID: String = "script-selection-live"
+const LIVE_FILESYSTEM_SELECTION_CONTEXT_ID: String = "filesystem-selection-live"
+const SCRIPT_SELECTION_PREVIEW_LIMIT: int = 2000
+const SCRIPT_LINE_PREVIEW_LIMIT: int = 500
+const FILESYSTEM_CONTEXT_MAX_PATHS: int = 40
+const EDITOR_CONTEXT_POLL_INTERVAL_MSEC: int = 500
 
 const MODEL_IDS: Array[String] = [
 	"deepseek-v4-flash",
@@ -206,9 +214,12 @@ var editor_plugin: EditorPlugin
 var editor_interface: EditorInterface
 var editor_selection: EditorSelection
 var editor_undo_redo: EditorUndoRedoManager
+var editor_script_editor: Object
 var editor_context_update_queued: bool
+var editor_context_next_poll_msec: int
 var additional_context_items: Array[Dictionary] = []
 var additional_context_next_id: int
+var dismissed_live_context_signatures: Dictionary[String, String] = {}
 
 
 func _ready() -> void:
@@ -243,6 +254,7 @@ func _process(_delta: float) -> void:
 		_handle_socket_closed_after_ready()
 	elif state == WebSocketPeer.STATE_CLOSED and is_connecting:
 		_retry_backend_connection()
+	_poll_live_editor_context()
 
 
 func _input(event: InputEvent) -> void:
@@ -413,6 +425,8 @@ func _setup_add_context_menu() -> void:
 	popup_menu.clear()
 	popup_menu.add_item("添加选中节点", ADD_CONTEXT_SELECTED_NODES_ID)
 	popup_menu.add_item("添加当前场景", ADD_CONTEXT_ACTIVE_SCENE_ID)
+	popup_menu.add_item("添加当前脚本选区", ADD_CONTEXT_SCRIPT_SELECTION_ID)
+	popup_menu.add_item("添加文件系统选中项", ADD_CONTEXT_FILESYSTEM_SELECTION_ID)
 	popup_menu.add_separator()
 	popup_menu.add_item("添加文件", ADD_CONTEXT_FILE_ID)
 	popup_menu.add_item("添加文件夹", ADD_CONTEXT_FOLDER_ID)
@@ -427,6 +441,10 @@ func _on_add_context_menu_id_pressed(menu_id: int) -> void:
 		_add_selected_nodes_context()
 	elif menu_id == ADD_CONTEXT_ACTIVE_SCENE_ID:
 		_add_active_scene_context()
+	elif menu_id == ADD_CONTEXT_SCRIPT_SELECTION_ID:
+		_add_current_script_selection_context()
+	elif menu_id == ADD_CONTEXT_FILESYSTEM_SELECTION_ID:
+		_add_filesystem_selection_context()
 	elif menu_id == ADD_CONTEXT_FILE_ID:
 		_show_add_context_resource_dialog(EditorFileDialog.FILE_MODE_OPEN_FILE, "file")
 	elif menu_id == ADD_CONTEXT_FOLDER_ID:
@@ -517,6 +535,32 @@ func _add_active_scene_context() -> void:
 	_add_or_replace_additional_context(context)
 
 
+func _add_current_script_selection_context() -> void:
+	var context: Dictionary = _collect_script_selection_context()
+	if context.is_empty():
+		_upsert_connection_status_entry("warning", "没有脚本选区", "请先在 Godot 脚本编辑器中打开脚本，或把光标放到目标行。")
+		return
+
+	context["id"] = _make_additional_context_id(
+		"script_selection",
+		str(context.get("resourcePath", "")),
+		_make_script_selection_context_key(context)
+	)
+	context["pinned"] = false
+	_add_or_replace_additional_context(context)
+
+
+func _add_filesystem_selection_context() -> void:
+	var context: Dictionary = _collect_filesystem_selection_context()
+	if context.is_empty():
+		_upsert_connection_status_entry("warning", "没有文件系统选择", "请先在 FileSystem Dock 中选择一个或多个文件/文件夹。")
+		return
+
+	context["id"] = _make_additional_context_id("filesystem_selection", "", _make_filesystem_selection_context_key(context))
+	context["pinned"] = false
+	_add_or_replace_additional_context(context)
+
+
 func _create_node_additional_context(target_node: Node, edited_root: Node) -> Dictionary:
 	var scene_path: String = _get_scene_resource_path(edited_root)
 	var node_path: String = _get_relative_node_path(edited_root, target_node)
@@ -592,6 +636,7 @@ func _on_additional_context_remove_requested(context_id: String) -> void:
 	for index: int in range(additional_context_items.size() - 1, -1, -1):
 		var context: Dictionary = additional_context_items[index]
 		if str(context.get("id", "")) == context_id:
+			_dismiss_live_additional_context_if_needed(context_id, context)
 			additional_context_items.remove_at(index)
 			break
 	_render_additional_context_items()
@@ -616,6 +661,8 @@ func _clear_unpinned_additional_context_items() -> void:
 	for context: Dictionary in additional_context_items:
 		if bool(context.get("pinned", false)):
 			retained_contexts.append(context)
+		else:
+			_dismiss_live_additional_context_if_needed(str(context.get("id", "")), context)
 	additional_context_items = retained_contexts
 	_render_additional_context_items()
 
@@ -627,11 +674,58 @@ func _make_additional_context_id(context_kind: String, resource_path: String, no
 
 
 func _make_additional_context_key(context: Dictionary) -> String:
+	var context_kind: String = str(context.get("kind", ""))
+	if context_kind == "script_selection":
+		return "%s\n%s\n%s" % [
+			context_kind,
+			str(context.get("resourcePath", "")),
+			_make_script_selection_context_key(context)
+		]
+	if context_kind == "filesystem_selection":
+		return "%s\n%s" % [
+			context_kind,
+			_make_filesystem_selection_context_key(context)
+		]
+
 	return "%s\n%s\n%s" % [
-		str(context.get("kind", "")),
+		context_kind,
 		str(context.get("resourcePath", "")),
 		str(context.get("nodePath", ""))
 	]
+
+
+func _get_additional_context_data(context: Dictionary) -> Dictionary:
+	var data_value: Variant = context.get("data", {})
+	if typeof(data_value) != TYPE_DICTIONARY:
+		return {}
+
+	return data_value as Dictionary
+
+
+func _make_script_selection_context_key(context: Dictionary) -> String:
+	var data: Dictionary = _get_additional_context_data(context)
+	return "%d:%d-%d:%d" % [
+		int(data.get("lineStart", 0)),
+		int(data.get("columnStart", 0)),
+		int(data.get("lineEnd", 0)),
+		int(data.get("columnEnd", 0))
+	]
+
+
+func _make_filesystem_selection_context_key(context: Dictionary) -> String:
+	var data: Dictionary = _get_additional_context_data(context)
+	var selected_paths_value: Variant = data.get("selectedPaths", [])
+	if typeof(selected_paths_value) != TYPE_ARRAY:
+		return str(context.get("resourcePath", ""))
+
+	var selected_paths: Array = selected_paths_value as Array
+	var path_parts: Array[String] = []
+	for selected_path_value: Variant in selected_paths:
+		if typeof(selected_path_value) != TYPE_DICTIONARY:
+			continue
+		var selected_path: Dictionary = selected_path_value as Dictionary
+		path_parts.append(str(selected_path.get("resourcePath", "")))
+	return "\n".join(path_parts)
 
 
 func _render_message_panel() -> void:
@@ -1026,12 +1120,32 @@ func setup_editor_bridge(plugin: EditorPlugin) -> void:
 	editor_interface = editor_plugin.get_editor_interface()
 	editor_selection = editor_interface.get_selection()
 	editor_undo_redo = editor_plugin.get_undo_redo()
+	editor_script_editor = editor_interface.get_script_editor()
 	if editor_selection != null and not editor_selection.selection_changed.is_connected(_on_editor_selection_changed):
 		editor_selection.selection_changed.connect(_on_editor_selection_changed)
+	var script_changed_callable: Callable = Callable(self, "_on_editor_script_changed")
+	if editor_script_editor != null and editor_script_editor.has_signal("editor_script_changed") and not editor_script_editor.is_connected("editor_script_changed", script_changed_callable):
+		editor_script_editor.connect("editor_script_changed", script_changed_callable)
 	_queue_editor_context_update()
 
 
 func _on_editor_selection_changed() -> void:
+	_queue_editor_context_update()
+
+
+func _on_editor_script_changed(_script: Resource) -> void:
+	_queue_editor_context_update()
+
+
+func _poll_live_editor_context() -> void:
+	if editor_interface == null:
+		return
+
+	var now_msec: int = Time.get_ticks_msec()
+	if now_msec < editor_context_next_poll_msec:
+		return
+
+	editor_context_next_poll_msec = now_msec + EDITOR_CONTEXT_POLL_INTERVAL_MSEC
 	_queue_editor_context_update()
 
 
@@ -1057,7 +1171,11 @@ func _send_editor_context_update() -> void:
 				continue
 			selected_nodes.append(_serialize_editor_node_summary(selected_node, edited_root))
 
+	var script_context: Dictionary = _collect_script_selection_context()
+	var filesystem_selection_context: Dictionary = _collect_filesystem_selection_context()
 	_sync_live_editor_selection_context(edited_root, selected_nodes)
+	_sync_live_script_selection_context(script_context)
+	_sync_live_filesystem_selection_context(filesystem_selection_context)
 	if not _is_socket_open():
 		return
 
@@ -1067,6 +1185,8 @@ func _send_editor_context_update() -> void:
 		"activeScenePath": _get_scene_resource_path(edited_root) if edited_root != null else "",
 		"selectedNodeCount": selected_nodes.size(),
 		"selectedNodes": selected_nodes,
+		"scriptContext": script_context if not script_context.is_empty() else null,
+		"filesystemSelection": filesystem_selection_context if not filesystem_selection_context.is_empty() else null,
 		"updatedAt": _get_utc_timestamp()
 	}
 	if edited_root != null:
@@ -1076,16 +1196,8 @@ func _send_editor_context_update() -> void:
 
 
 func _sync_live_editor_selection_context(edited_root: Node, selected_nodes: Array[Dictionary]) -> void:
-	var existing_index: int = _find_additional_context_index(LIVE_EDITOR_SELECTION_CONTEXT_ID)
-	if existing_index >= 0:
-		var existing_context: Dictionary = additional_context_items[existing_index]
-		if bool(existing_context.get("pinned", false)):
-			return
-
 	if edited_root == null or selected_nodes.is_empty():
-		if existing_index >= 0:
-			additional_context_items.remove_at(existing_index)
-			_render_additional_context_items()
+		_upsert_live_additional_context(LIVE_EDITOR_SELECTION_CONTEXT_ID, {})
 		return
 
 	var scene_path: String = _get_scene_resource_path(edited_root)
@@ -1107,12 +1219,74 @@ func _sync_live_editor_selection_context(edited_root: Node, selected_nodes: Arra
 			"selectedNodes": selected_nodes
 		}
 	}
+	_upsert_live_additional_context(LIVE_EDITOR_SELECTION_CONTEXT_ID, context)
 
+
+func _sync_live_script_selection_context(context: Dictionary) -> void:
+	_upsert_live_additional_context(LIVE_SCRIPT_SELECTION_CONTEXT_ID, context)
+
+
+func _sync_live_filesystem_selection_context(context: Dictionary) -> void:
+	_upsert_live_additional_context(LIVE_FILESYSTEM_SELECTION_CONTEXT_ID, context)
+
+
+func _upsert_live_additional_context(context_id: String, context: Dictionary) -> void:
+	_ensure_dismissed_live_context_signatures()
+	var existing_index: int = _find_additional_context_index(context_id)
 	if existing_index >= 0:
-		additional_context_items[existing_index] = context
+		var existing_context: Dictionary = additional_context_items[existing_index]
+		if bool(existing_context.get("pinned", false)):
+			return
+
+	if context.is_empty():
+		dismissed_live_context_signatures.erase(context_id)
+		if existing_index >= 0:
+			additional_context_items.remove_at(existing_index)
+			_render_additional_context_items()
+		return
+
+	var live_context: Dictionary = context.duplicate(true)
+	live_context["id"] = context_id
+	live_context["pinned"] = false
+	var next_signature: String = _make_live_additional_context_signature(context_id, live_context)
+	if str(dismissed_live_context_signatures.get(context_id, "")) == next_signature:
+		return
+	if existing_index >= 0:
+		var current_signature: String = _make_live_additional_context_signature(context_id, additional_context_items[existing_index])
+		if current_signature == next_signature:
+			return
+		additional_context_items[existing_index] = live_context
 	else:
-		additional_context_items.append(context)
+		additional_context_items.append(live_context)
 	_render_additional_context_items()
+
+
+func _dismiss_live_additional_context_if_needed(context_id: String, context: Dictionary) -> void:
+	if not _is_live_additional_context_id(context_id):
+		return
+
+	_ensure_dismissed_live_context_signatures()
+	dismissed_live_context_signatures[context_id] = _make_live_additional_context_signature(context_id, context)
+
+
+func _ensure_dismissed_live_context_signatures() -> void:
+	if typeof(dismissed_live_context_signatures) != TYPE_DICTIONARY:
+		dismissed_live_context_signatures = {}
+
+
+func _is_live_additional_context_id(context_id: String) -> bool:
+	return (
+		context_id == LIVE_EDITOR_SELECTION_CONTEXT_ID
+		or context_id == LIVE_SCRIPT_SELECTION_CONTEXT_ID
+		or context_id == LIVE_FILESYSTEM_SELECTION_CONTEXT_ID
+	)
+
+
+func _make_live_additional_context_signature(context_id: String, context: Dictionary) -> String:
+	var signature_context: Dictionary = context.duplicate(true)
+	signature_context["id"] = context_id
+	signature_context["pinned"] = false
+	return JSON.stringify(signature_context)
 
 
 func _find_additional_context_index(context_id: String) -> int:
@@ -1121,6 +1295,174 @@ func _find_additional_context_index(context_id: String) -> int:
 		if str(context.get("id", "")) == context_id:
 			return index
 	return -1
+
+
+func _collect_script_selection_context() -> Dictionary:
+	if editor_script_editor == null:
+		return {}
+	if not editor_script_editor.has_method("get_current_editor"):
+		return {}
+
+	var current_editor_value: Variant = editor_script_editor.call("get_current_editor")
+	if not (current_editor_value is Object):
+		return {}
+	var current_editor_object: Object = current_editor_value as Object
+	if current_editor_object == null or not current_editor_object.has_method("get_base_editor"):
+		return {}
+
+	var base_editor_value: Variant = current_editor_object.call("get_base_editor")
+	if not (base_editor_value is TextEdit):
+		return {}
+	var base_text_edit: TextEdit = base_editor_value as TextEdit
+	var line_count: int = base_text_edit.get_line_count()
+	if line_count <= 0:
+		return {}
+
+	var resource_path: String = _get_current_script_resource_path(current_editor_object)
+	var caret_line_zero: int = clampi(base_text_edit.get_caret_line(0), 0, maxi(line_count - 1, 0))
+	var caret_column_zero: int = maxi(base_text_edit.get_caret_column(0), 0)
+	var has_script_selection: bool = base_text_edit.has_selection(0)
+	var line_start: int = caret_line_zero + 1
+	var column_start: int = caret_column_zero + 1
+	var line_end: int = line_start
+	var column_end: int = column_start
+	var data: Dictionary = {
+		"caretLine": line_start,
+		"caretColumn": column_start,
+		"hasSelection": has_script_selection
+	}
+
+	if has_script_selection:
+		line_start = base_text_edit.get_selection_from_line(0) + 1
+		column_start = base_text_edit.get_selection_from_column(0) + 1
+		line_end = base_text_edit.get_selection_to_line(0) + 1
+		column_end = base_text_edit.get_selection_to_column(0) + 1
+		var selected_text: String = base_text_edit.get_selected_text(0)
+		data["selectedTextPreview"] = _clip_context_text(selected_text, SCRIPT_SELECTION_PREVIEW_LIMIT)
+		data["selectedTextTruncated"] = selected_text.length() > SCRIPT_SELECTION_PREVIEW_LIMIT
+	else:
+		var current_line_text: String = base_text_edit.get_line(caret_line_zero)
+		data["lineTextPreview"] = _clip_context_text(current_line_text, SCRIPT_LINE_PREVIEW_LIMIT)
+		data["lineTextTruncated"] = current_line_text.length() > SCRIPT_LINE_PREVIEW_LIMIT
+
+	data["lineStart"] = line_start
+	data["columnStart"] = column_start
+	data["lineEnd"] = line_end
+	data["columnEnd"] = column_end
+
+	var script_name: String = resource_path.get_file()
+	if script_name.is_empty():
+		script_name = "未保存脚本"
+	var range_text: String = _format_script_selection_range(line_start, line_end)
+	var selection_label: String = "选区" if has_script_selection else "光标行"
+	var context: Dictionary = {
+		"id": LIVE_SCRIPT_SELECTION_CONTEXT_ID,
+		"kind": "script_selection",
+		"title": "%s:%s" % [script_name, range_text],
+		"subtitle": "%s · %d:%d-%d:%d" % [selection_label, line_start, column_start, line_end, column_end],
+		"pinned": false,
+		"source": "editor",
+		"summary": "Godot 脚本编辑器当前%s，行列使用 1-based：%d:%d-%d:%d。" % [selection_label, line_start, column_start, line_end, column_end],
+		"data": data
+	}
+	if not resource_path.is_empty():
+		context["resourcePath"] = resource_path
+		context["scriptPath"] = resource_path
+	return context
+
+
+func _get_current_script_resource_path(current_editor_object: Object) -> String:
+	var script_resource: Resource
+	if editor_script_editor != null and editor_script_editor.has_method("get_current_script"):
+		var script_value: Variant = editor_script_editor.call("get_current_script")
+		if script_value is Resource:
+			script_resource = script_value as Resource
+
+	if script_resource == null and current_editor_object.has_method("get_edited_resource"):
+		var edited_resource_value: Variant = current_editor_object.call("get_edited_resource")
+		if edited_resource_value is Resource:
+			script_resource = edited_resource_value as Resource
+
+	if script_resource == null:
+		return ""
+
+	return script_resource.resource_path
+
+
+func _collect_filesystem_selection_context() -> Dictionary:
+	if editor_interface == null:
+		return {}
+
+	var selected_paths: PackedStringArray = editor_interface.get_selected_paths()
+	if selected_paths.is_empty():
+		return {}
+
+	var selected_path_items: Array[Dictionary] = []
+	var selected_names: Array[String] = []
+	var truncated: bool = false
+	for index: int in range(selected_paths.size()):
+		if selected_path_items.size() >= FILESYSTEM_CONTEXT_MAX_PATHS:
+			truncated = true
+			break
+
+		var selected_path: String = selected_paths[index].strip_edges()
+		if selected_path.is_empty():
+			continue
+
+		var normalized_path: String = selected_path.trim_suffix("/")
+		var selected_kind: String = "folder" if DirAccess.dir_exists_absolute(selected_path) else "file"
+		var selected_name: String = normalized_path.get_file()
+		if selected_name.is_empty():
+			selected_name = selected_path
+		var selected_item: Dictionary = {
+			"resourcePath": selected_path,
+			"kind": selected_kind,
+			"name": selected_name
+		}
+		if selected_kind == "file":
+			selected_item["extension"] = selected_path.get_extension()
+		selected_path_items.append(selected_item)
+		selected_names.append(selected_name)
+
+	if selected_path_items.is_empty():
+		return {}
+
+	var first_item: Dictionary = selected_path_items[0]
+	var first_path: String = str(first_item.get("resourcePath", ""))
+	var title_text: String = "文件系统选中项 (%d)" % selected_path_items.size()
+	if selected_path_items.size() == 1:
+		title_text = str(first_item.get("name", title_text))
+
+	var subtitle_text: String = first_path
+	if selected_path_items.size() > 1:
+		subtitle_text = "%s 等 %d 项" % [first_path, selected_path_items.size()]
+
+	return {
+		"id": LIVE_FILESYSTEM_SELECTION_CONTEXT_ID,
+		"kind": "filesystem_selection",
+		"title": title_text,
+		"subtitle": subtitle_text,
+		"pinned": false,
+		"source": "editor",
+		"resourcePath": first_path,
+		"summary": "FileSystem Dock 当前选中：%s%s" % [", ".join(selected_names.slice(0, 6)), " ..." if truncated or selected_names.size() > 6 else ""],
+		"data": {
+			"selectedPaths": selected_path_items,
+			"truncated": truncated
+		}
+	}
+
+
+func _format_script_selection_range(line_start: int, line_end: int) -> String:
+	if line_start == line_end:
+		return "%d" % line_start
+	return "%d-%d" % [line_start, line_end]
+
+
+func _clip_context_text(source_text: String, max_chars: int) -> String:
+	if source_text.length() <= max_chars:
+		return source_text
+	return source_text.substr(0, max_chars)
 
 
 func _get_edited_scene_root() -> Node:
@@ -3653,7 +3995,7 @@ func _update_timeline_entry_content(entry_id: String, content: String) -> void:
 	_mark_timeline_height_dirty(index)
 
 
-func _append_assistant_delta_to_timeline(entry_id: String, delta_text: String) -> void:
+func _append_assistant_delta_to_timeline(entry_id: String, delta_text: String, preserve_stream_height: bool = false) -> void:
 	var index: int = _find_timeline_entry_index(entry_id)
 	if index < 0 or delta_text.is_empty():
 		return
@@ -3678,6 +4020,10 @@ func _append_assistant_delta_to_timeline(entry_id: String, delta_text: String) -
 		body_parts[body_parts.size() - 1] = part
 
 	entry["body_parts"] = body_parts
+	if preserve_stream_height:
+		timeline_entries[index] = entry
+		return
+
 	entry["height_estimate"] = _estimate_timeline_entry_height(str(entry.get("type", "")), next_content)
 	entry["height_actual"] = 0.0
 	timeline_entries[index] = entry
@@ -4022,6 +4368,7 @@ func _deferred_measure_timeline_items() -> void:
 	timeline_measure_queued = false
 
 	var changed: bool = false
+	var render_required: bool = false
 	for entry_id: String in rendered_entry_nodes.keys():
 		var node: Node = rendered_entry_nodes.get(entry_id, null) as Node
 		if not (node is Control):
@@ -4042,11 +4389,16 @@ func _deferred_measure_timeline_items() -> void:
 		timeline_entries[index] = entry
 		_mark_timeline_height_dirty(index)
 		changed = true
+		if entry_id != active_assistant_entry_id or active_stream_id.is_empty():
+			render_required = true
 
 	if changed:
 		var should_follow_bottom: bool = _should_follow_timeline_updates()
 		_rebuild_timeline_height_cache()
-		_render_visible_timeline(should_follow_bottom)
+		if render_required:
+			_render_visible_timeline(should_follow_bottom)
+		elif should_follow_bottom:
+			_scroll_timeline_to_bottom_deferred()
 
 
 func _scroll_timeline_to_bottom_deferred() -> void:
@@ -4159,11 +4511,15 @@ func _flush_pending_assistant_delta() -> void:
 	var should_follow_bottom: bool = _should_follow_timeline_updates()
 	var delta_text: String = pending_assistant_delta_text
 	pending_assistant_delta_text = ""
-	_append_assistant_delta_to_timeline(active_assistant_entry_id, delta_text)
+	var active_entry_rendered: bool = rendered_entry_nodes.has(active_assistant_entry_id)
+	_append_assistant_delta_to_timeline(active_assistant_entry_id, delta_text, active_entry_rendered)
 
 	active_assistant_item = rendered_entry_nodes.get(active_assistant_entry_id, null) as Node
 	if active_assistant_item != null:
 		active_assistant_item.call("append_delta", delta_text)
+		_schedule_timeline_measure()
+		_scroll_to_bottom_if_following(should_follow_bottom)
+		return
 
 	_schedule_timeline_render(should_follow_bottom)
 

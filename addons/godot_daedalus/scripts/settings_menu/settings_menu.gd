@@ -16,6 +16,7 @@ signal archived_session_delete_requested(session_id: String)
 @onready var custom_instructions_warning_button: Button = %CustomInstructionsWarningButton
 @onready var next_step_hints_check_box: CheckBox = %NextStepHintsCheckBox
 @onready var custom_instructions_edit: TextEdit = %CustomInstructionsEdit
+@onready var mcp_server_list: VBoxContainer = %MCPServerList
 @onready var archived_workspace_filter_option_button: OptionButton = %WorkspaceFilterOptionButton
 @onready var search_archived_chat_line_edit: LineEdit = %SearchArchivedChatLineEdit
 @onready var delete_all_archived_chats_button: Button = %DeleteAllArchivedChatsButton
@@ -494,3 +495,7 @@ func _update_delete_all_archived_chats_button() -> void:
 
 	delete_all_archived_chats_button.disabled = archived_sessions.is_empty()
 	delete_all_archived_chats_button.tooltip_text = "Delete all archived chats permanently." if not archived_sessions.is_empty() else "No archived chats to delete."
+
+
+func _on_add_mcp_server_button_pressed() -> void:
+	pass # Replace with function body.

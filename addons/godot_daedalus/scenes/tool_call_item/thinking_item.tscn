@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://bc6odrlupcfyr"]
 
 [ext_resource type="Texture2D" uid="uid://imjgcrfhfjj5" path="res://addons/godot_daedalus/assets/icons/think.svg" id="1_0slkb"]
+[ext_resource type="Theme" uid="uid://dhartxld7pqyb" path="res://addons/godot_daedalus/assets/markdown_theme.tres" id="2_tue5u"]
 
 [node name="ThinkingItem" type="HBoxContainer" unique_id=1998957647]
 offset_right = 404.0
@@ -21,8 +22,8 @@ content_margin = 0
 context_menu_enabled = true
 streaming_enabled = true
 deferred_layout_enabled = true
-layout_flush_interval_msec = 33
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 128)
 layout_mode = 2
 size_flags_horizontal = 3
+theme = ExtResource("2_tue5u")

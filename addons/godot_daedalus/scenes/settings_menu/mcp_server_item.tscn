@@ -1,0 +1,31 @@
+[gd_scene format=3 uid="uid://cuwihfpwn6b68"]
+
+[ext_resource type="Texture2D" uid="uid://qpmvpq6q2q60" path="res://addons/godot_daedalus/assets/icons/remove.svg" id="1_5xa0g"]
+[ext_resource type="Script" uid="uid://onficm3dxyr2" path="res://addons/godot_daedalus/scripts/settings_menu/mcp_server_item.gd" id="1_m40qf"]
+[ext_resource type="Texture2D" uid="uid://pj7m0o4eos6a" path="res://addons/godot_daedalus/assets/icons/edit.svg" id="2_m40qf"]
+
+[node name="MCPServerItem" type="HBoxContainer" unique_id=1650741122]
+script = ExtResource("1_m40qf")
+
+[node name="NameLabel" type="Label" parent="." unique_id=2105690758]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "MCP"
+text_overrun_behavior = 6
+
+[node name="RemoveButton" type="Button" parent="." unique_id=366006546]
+layout_mode = 2
+mouse_filter = 1
+theme_type_variation = &"FlatButton"
+icon = ExtResource("1_5xa0g")
+
+[node name="EditButton" type="Button" parent="." unique_id=1716334768]
+layout_mode = 2
+mouse_filter = 1
+theme_type_variation = &"FlatButton"
+icon = ExtResource("2_m40qf")
+
+[node name="CheckButton" type="CheckButton" parent="." unique_id=1507414911]
+layout_mode = 2

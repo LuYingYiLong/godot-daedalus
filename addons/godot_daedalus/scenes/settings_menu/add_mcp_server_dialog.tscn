@@ -1,0 +1,136 @@
+[gd_scene format=3 uid="uid://cb7acb4w7s4xl"]
+
+[ext_resource type="Script" uid="uid://j1fq1u805tgf" path="res://addons/godot_daedalus/scripts/settings_menu/add_mcp_server_dialog.gd" id="1_loefn"]
+
+[node name="AddMCPServerDialog" type="ConfirmationDialog" unique_id=1657443825]
+oversampling_override = 1.0
+title = "Add MCP server"
+initial_position = 2
+size = Vector2i(510, 407)
+force_native = true
+script = ExtResource("1_loefn")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=2062931845]
+offset_left = 9.0
+offset_top = 9.0
+offset_right = 501.0
+offset_bottom = 356.0
+
+[node name="GridContainer" type="GridContainer" parent="VBoxContainer" unique_id=1960152658]
+layout_mode = 2
+columns = 2
+
+[node name="NameLabel" type="Label" parent="VBoxContainer/GridContainer" unique_id=166481882]
+custom_minimum_size = Vector2(128, 0)
+layout_mode = 2
+text = "Name"
+
+[node name="NameLineEdit" type="LineEdit" parent="VBoxContainer/GridContainer" unique_id=204281853]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "MCP server name"
+select_all_on_focus = true
+caret_blink = true
+
+[node name="DescriptionLabel" type="Label" parent="VBoxContainer/GridContainer" unique_id=951273383]
+custom_minimum_size = Vector2(128, 0)
+layout_mode = 2
+text = "Description"
+
+[node name="DescriptionTextEdit" type="TextEdit" parent="VBoxContainer/GridContainer" unique_id=687577130]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
+placeholder_text = "MCP server description"
+caret_blink = true
+
+[node name="TypeLabel" type="Label" parent="VBoxContainer/GridContainer" unique_id=244423366]
+custom_minimum_size = Vector2(128, 0)
+layout_mode = 2
+text = "Type"
+
+[node name="TypeOptionButton" type="OptionButton" parent="VBoxContainer/GridContainer" unique_id=541286812]
+unique_name_in_owner = true
+layout_mode = 2
+selected = 0
+item_count = 2
+popup/item_0/text = "STDIO"
+popup/item_0/id = 0
+popup/item_1/text = "HTTP"
+popup/item_1/id = 1
+
+[node name="StdioContainer" type="GridContainer" parent="VBoxContainer" unique_id=549906614]
+unique_name_in_owner = true
+layout_mode = 2
+columns = 2
+
+[node name="CommonLabel" type="Label" parent="VBoxContainer/StdioContainer" unique_id=1946099287]
+custom_minimum_size = Vector2(128, 0)
+layout_mode = 2
+text = "Common"
+
+[node name="CommonLineEdit" type="LineEdit" parent="VBoxContainer/StdioContainer" unique_id=1086438480]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "npx or uvx"
+select_all_on_focus = true
+caret_blink = true
+
+[node name="ArgsLabel" type="Label" parent="VBoxContainer/StdioContainer" unique_id=2060683596]
+custom_minimum_size = Vector2(128, 0)
+layout_mode = 2
+text = "Args"
+
+[node name="ArgsTextEdit" type="TextEdit" parent="VBoxContainer/StdioContainer" unique_id=1271391497]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
+placeholder_text = "arg1
+arg2"
+caret_blink = true
+
+[node name="EnvLabel" type="Label" parent="VBoxContainer/StdioContainer" unique_id=925954195]
+layout_mode = 2
+text = "Env"
+
+[node name="EnvTextEdit" type="TextEdit" parent="VBoxContainer/StdioContainer" unique_id=1159268808]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
+placeholder_text = "KEY1=value1
+KEY2=value2"
+caret_blink = true
+
+[node name="HttpContainer" type="GridContainer" parent="VBoxContainer" unique_id=116500801]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+columns = 2
+
+[node name="URLLabel" type="Label" parent="VBoxContainer/HttpContainer" unique_id=56122420]
+custom_minimum_size = Vector2(128, 0)
+layout_mode = 2
+text = "URL"
+
+[node name="URLLineEdit" type="LineEdit" parent="VBoxContainer/HttpContainer" unique_id=1430420453]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "https://mcp.example.com/mcp"
+select_all_on_focus = true
+caret_blink = true
+
+[node name="HttpHeaderLabel" type="Label" parent="VBoxContainer/HttpContainer" unique_id=1572171324]
+custom_minimum_size = Vector2(128, 0)
+layout_mode = 2
+text = "HTTP Header"
+
+[node name="HttpHeaderTextEdit" type="TextEdit" parent="VBoxContainer/HttpContainer" unique_id=358536615]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
+placeholder_text = "Authorization: Bearer your_token_here
+Content-Type: application/json"
+caret_blink = true

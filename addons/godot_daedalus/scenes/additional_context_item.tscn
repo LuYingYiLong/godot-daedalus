@@ -1,0 +1,39 @@
+[gd_scene format=3 uid="uid://rfwvgjocqqva"]
+
+[ext_resource type="Texture2D" uid="uid://djumrslufw1q8" path="res://addons/godot_daedalus/assets/icons/pin.svg" id="1_endou"]
+[ext_resource type="Texture2D" uid="uid://cg37rrr8iihlh" path="res://addons/godot_daedalus/assets/icons/node.svg" id="2_endou"]
+[ext_resource type="Script" uid="uid://c3x60bumb11fx" path="res://addons/godot_daedalus/scripts/additional_context_item.gd" id="2_xmvc4"]
+
+[node name="AdditionalContextItem" type="Button" unique_id=993830815]
+custom_minimum_size = Vector2(128, 0)
+icon = ExtResource("1_endou")
+script = ExtResource("2_xmvc4")
+
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=1392508416]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 28
+
+[node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer" unique_id=335751414]
+layout_mode = 2
+theme_override_constants/separation = -6
+
+[node name="Icon" type="TextureRect" parent="MarginContainer/HBoxContainer" unique_id=964371002]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 4
+texture = ExtResource("2_endou")
+
+[node name="Label" type="Label" parent="MarginContainer/HBoxContainer" unique_id=1651342439]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"aLabelNoMargin"
+text = "Contxt"
+text_overrun_behavior = 1

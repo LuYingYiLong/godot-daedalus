@@ -11,6 +11,7 @@
 [ext_resource type="PackedScene" uid="uid://dftctpgnf7byb" path="res://addons/godot_daedalus/scenes/boot_splash.tscn" id="5_boot"]
 [ext_resource type="Texture2D" uid="uid://1eh7wxaewfje" path="res://addons/godot_daedalus/assets/icons/connected.svg" id="6_kyybk"]
 [ext_resource type="Texture2D" uid="uid://ctpm83h33rpbq" path="res://addons/godot_daedalus/assets/icons/search.svg" id="6_m2uxd"]
+[ext_resource type="PackedScene" uid="uid://rfwvgjocqqva" path="res://addons/godot_daedalus/scenes/additional_context_item.tscn" id="7_kyybk"]
 
 [node name="Main" type="VBoxContainer" unique_id=81601605]
 offset_right = 1152.0
@@ -99,6 +100,7 @@ size_flags_vertical = 3
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
+scroll_vertical = 318
 
 [node name="BackgroundContextContainer" type="VBoxContainer" parent="BackgroundContextViewer/ScrollContainer" unique_id=2046895021]
 unique_name_in_owner = true
@@ -167,11 +169,23 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 112)
 layout_mode = 2
 theme_type_variation = &"TreeTable"
-columns = 2
+columns = 3
 column_titles_visible = true
 hide_folding = true
 hide_root = true
-drop_mode_flags = 2
+
+[node name="AdditionalContextViewer" type="ScrollContainer" parent="." unique_id=1294467320]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+vertical_scroll_mode = 0
+
+[node name="AdditionalContextContainer" type="HBoxContainer" parent="AdditionalContextViewer" unique_id=785064898]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="AdditionalContextItem" parent="AdditionalContextViewer/AdditionalContextContainer" unique_id=993830815 instance=ExtResource("7_kyybk")]
+layout_mode = 2
 
 [node name="TextEdit" type="TextEdit" parent="." unique_id=642272112]
 custom_minimum_size = Vector2(0, 128)
@@ -196,12 +210,12 @@ theme_override_constants/margin_bottom = 4
 layout_mode = 2
 mouse_filter = 2
 
-[node name="HBoxContainer" type="HBoxContainer" parent="TextEdit/MarginContainer/VBoxContainer" unique_id=697082503]
+[node name="FooterContainer" type="HBoxContainer" parent="TextEdit/MarginContainer/VBoxContainer" unique_id=697082503]
 layout_mode = 2
 size_flags_vertical = 10
 mouse_filter = 0
 
-[node name="AddContextButton" type="MenuButton" parent="TextEdit/MarginContainer/VBoxContainer/HBoxContainer" unique_id=562787815]
+[node name="AddContextButton" type="MenuButton" parent="TextEdit/MarginContainer/VBoxContainer/FooterContainer" unique_id=562787815]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Add files and stuff"
@@ -211,7 +225,7 @@ item_count = 1
 popup/item_0/text = "Add file & folder"
 popup/item_0/id = 0
 
-[node name="ModelButton" type="OptionButton" parent="TextEdit/MarginContainer/VBoxContainer/HBoxContainer" unique_id=1736821875]
+[node name="ModelButton" type="OptionButton" parent="TextEdit/MarginContainer/VBoxContainer/FooterContainer" unique_id=1736821875]
 unique_name_in_owner = true
 layout_mode = 2
 selected = 1
@@ -221,7 +235,7 @@ popup/item_0/id = 0
 popup/item_1/text = "V4 Pro"
 popup/item_1/id = 1
 
-[node name="EffortButton" type="OptionButton" parent="TextEdit/MarginContainer/VBoxContainer/HBoxContainer" unique_id=596047341]
+[node name="EffortButton" type="OptionButton" parent="TextEdit/MarginContainer/VBoxContainer/FooterContainer" unique_id=596047341]
 unique_name_in_owner = true
 layout_mode = 2
 selected = 0
@@ -229,7 +243,7 @@ item_count = 1
 popup/item_0/text = "Normal"
 popup/item_0/id = 0
 
-[node name="ApprovalModeButton" type="OptionButton" parent="TextEdit/MarginContainer/VBoxContainer/HBoxContainer" unique_id=1350121884]
+[node name="ApprovalModeButton" type="OptionButton" parent="TextEdit/MarginContainer/VBoxContainer/FooterContainer" unique_id=1350121884]
 unique_name_in_owner = true
 layout_mode = 2
 selected = 0
@@ -241,11 +255,11 @@ popup/item_1/id = 1
 popup/item_2/text = "Read Only"
 popup/item_2/id = 2
 
-[node name="Control" type="Control" parent="TextEdit/MarginContainer/VBoxContainer/HBoxContainer" unique_id=1164771243]
+[node name="Control" type="Control" parent="TextEdit/MarginContainer/VBoxContainer/FooterContainer" unique_id=1164771243]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="ContextLengthButton" type="Button" parent="TextEdit/MarginContainer/VBoxContainer/HBoxContainer" unique_id=1080659553]
+[node name="ContextLengthButton" type="Button" parent="TextEdit/MarginContainer/VBoxContainer/FooterContainer" unique_id=1080659553]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
@@ -254,14 +268,15 @@ tooltip_text = "Context usage: 0% (0 / 1.0M)"
 theme_type_variation = &"FlatButton"
 icon = ExtResource("2_11dqu")
 
-[node name="SendButton" type="Button" parent="TextEdit/MarginContainer/VBoxContainer/HBoxContainer" unique_id=983577757]
+[node name="SendButton" type="Button" parent="TextEdit/MarginContainer/VBoxContainer/FooterContainer" unique_id=983577757]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Send"
 theme_type_variation = &"FlatButton"
+disabled = true
 icon = ExtResource("2_qsedr")
 
-[node name="StopButton" type="Button" parent="TextEdit/MarginContainer/VBoxContainer/HBoxContainer" unique_id=1281113533]
+[node name="StopButton" type="Button" parent="TextEdit/MarginContainer/VBoxContainer/FooterContainer" unique_id=1281113533]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
@@ -283,17 +298,18 @@ size_flags_vertical = 3
 [connection signal="pressed" from="HeaderContainer/CreateNewSessionButton" to="." method="_on_create_new_session_button_pressed"]
 [connection signal="pressed" from="HeaderContainer/SettingsButton" to="." method="_on_settings_button_pressed"]
 [connection signal="pressed" from="HeaderContainer/StatusButton" to="." method="_on_status_button_pressed"]
-[connection signal="mouse_entered" from="SessionListViewer/ScrollContainer/SessionList/@Button@62062" to="SessionListViewer/ScrollContainer/SessionList/@Button@62062" method="_on_mouse_entered"]
-[connection signal="mouse_exited" from="SessionListViewer/ScrollContainer/SessionList/@Button@62062" to="SessionListViewer/ScrollContainer/SessionList/@Button@62062" method="_on_mouse_exited"]
-[connection signal="pressed" from="SessionListViewer/ScrollContainer/SessionList/@Button@62062" to="SessionListViewer/ScrollContainer/SessionList/@Button@62062" method="_on_pressed"]
+[connection signal="mouse_entered" from="SessionListViewer/ScrollContainer/SessionList/@Button@78900" to="SessionListViewer/ScrollContainer/SessionList/@Button@78900" method="_on_mouse_entered"]
+[connection signal="mouse_exited" from="SessionListViewer/ScrollContainer/SessionList/@Button@78900" to="SessionListViewer/ScrollContainer/SessionList/@Button@78900" method="_on_mouse_exited"]
+[connection signal="pressed" from="SessionListViewer/ScrollContainer/SessionList/@Button@78900" to="SessionListViewer/ScrollContainer/SessionList/@Button@78900" method="_on_pressed"]
 [connection signal="pressed" from="BackgroundContextViewer/ApprovalDialog/VBoxContainer/HBoxContainer/ApproveButton" to="." method="_on_approve_button_pressed"]
 [connection signal="pressed" from="BackgroundContextViewer/ApprovalDialog/VBoxContainer/HBoxContainer/RejectButton" to="." method="_on_reject_button_pressed"]
 [connection signal="pressed" from="BackgroundContextViewer/ApprovalDialog/VBoxContainer/HBoxContainer/SkipButton" to="." method="_on_skip_approval_button_pressed"]
+[connection signal="button_clicked" from="BackgroundContextViewer/MessageQueue/MessageTree" to="." method="_on_message_tree_button_clicked"]
 [connection signal="item_activated" from="BackgroundContextViewer/MessageQueue/MessageTree" to="." method="_on_message_tree_item_activated"]
 [connection signal="text_changed" from="TextEdit" to="." method="_on_text_edit_text_changed"]
-[connection signal="item_selected" from="TextEdit/MarginContainer/VBoxContainer/HBoxContainer/ModelButton" to="." method="_on_model_button_item_selected"]
-[connection signal="item_selected" from="TextEdit/MarginContainer/VBoxContainer/HBoxContainer/ApprovalModeButton" to="." method="_on_approval_mode_button_item_selected"]
-[connection signal="pressed" from="TextEdit/MarginContainer/VBoxContainer/HBoxContainer/ContextLengthButton" to="." method="_on_context_length_button_pressed"]
-[connection signal="pressed" from="TextEdit/MarginContainer/VBoxContainer/HBoxContainer/SendButton" to="." method="_on_send_button_pressed"]
-[connection signal="pressed" from="TextEdit/MarginContainer/VBoxContainer/HBoxContainer/StopButton" to="." method="_on_stop_button_pressed"]
+[connection signal="item_selected" from="TextEdit/MarginContainer/VBoxContainer/FooterContainer/ModelButton" to="." method="_on_model_button_item_selected"]
+[connection signal="item_selected" from="TextEdit/MarginContainer/VBoxContainer/FooterContainer/ApprovalModeButton" to="." method="_on_approval_mode_button_item_selected"]
+[connection signal="pressed" from="TextEdit/MarginContainer/VBoxContainer/FooterContainer/ContextLengthButton" to="." method="_on_context_length_button_pressed"]
+[connection signal="pressed" from="TextEdit/MarginContainer/VBoxContainer/FooterContainer/SendButton" to="." method="_on_send_button_pressed"]
+[connection signal="pressed" from="TextEdit/MarginContainer/VBoxContainer/FooterContainer/StopButton" to="." method="_on_stop_button_pressed"]
 [connection signal="reconnect_requested" from="BootSplash" to="." method="_on_boot_splash_reconnect_requested"]

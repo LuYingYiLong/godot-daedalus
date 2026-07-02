@@ -3,6 +3,10 @@ extends MarginContainer
 
 signal resend_requested(request_id: String, message_text: String)
 
+const ADDITIONAL_CONTEXT_ITEM_SCENE: PackedScene = preload("uid://rfwvgjocqqva")
+
+@onready var additional_context_viewer: ScrollContainer = %AdditionalContextViewer
+@onready var additional_context_container: HBoxContainer = %AdditionalContextContainer
 @onready var user_message_label: MarkdownLabel = %UserMessageLabel
 @onready var text_edit: TextEdit = %TextEdit
 @onready var footer_container: HBoxContainer = %FooterContainer
@@ -12,10 +16,11 @@ signal resend_requested(request_id: String, message_text: String)
 var request_id: String
 
 
-func setup(message_text: String, message_request_id: String = "", sent_at_utc: String = "") -> void:
+func setup(message_text: String, message_request_id: String = "", sent_at_utc: String = "", additional_contexts: Array = []) -> void:
 	request_id = message_request_id
 	user_message_label.text = message_text
 	_set_send_time(sent_at_utc)
+	_render_additional_contexts(additional_contexts)
 	text_edit.hide()
 	text_edit.clear()
 	send_button.hide()
@@ -74,3 +79,23 @@ func _format_utc_time(timestamp: String) -> String:
 		formatted_timestamp = formatted_timestamp.substr(0, dot_index)
 	formatted_timestamp = formatted_timestamp.replace("T", " ")
 	return "%s UTC" % formatted_timestamp
+
+
+func _render_additional_contexts(additional_contexts: Array) -> void:
+	for child: Node in additional_context_container.get_children():
+		child.queue_free()
+
+	additional_context_viewer.visible = not additional_contexts.is_empty()
+	if additional_contexts.is_empty():
+		return
+
+	for context_value: Variant in additional_contexts:
+		if typeof(context_value) != TYPE_DICTIONARY:
+			continue
+
+		var context_dictionary: Dictionary = context_value as Dictionary
+		var context_item: Node = ADDITIONAL_CONTEXT_ITEM_SCENE.instantiate()
+		additional_context_container.add_child(context_item)
+		context_item.call("setup", context_dictionary)
+		if context_item.has_method("set_interactive"):
+			context_item.call("set_interactive", false)

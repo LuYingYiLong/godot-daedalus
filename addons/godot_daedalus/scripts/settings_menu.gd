@@ -3,7 +3,7 @@ extends AcceptDialog
 
 signal provider_config_save_requested(api_key: String)
 signal provider_config_clear_requested
-signal frontend_config_save_requested(backend_url: String, custom_instructions: String)
+signal frontend_config_save_requested(backend_url: String, custom_instructions: String, next_step_hints_enabled: bool)
 signal archived_session_restore_requested(session_id: String)
 signal archived_session_delete_requested(session_id: String)
 
@@ -14,6 +14,7 @@ signal archived_session_delete_requested(session_id: String)
 @onready var clear_deepseek_api_key_button: Button = %ClearDeepseekAPIKeyButton
 @onready var custom_instructions_label: Label = %CustomInstructionsLabel
 @onready var custom_instructions_warning_button: Button = %CustomInstructionsWarningButton
+@onready var next_step_hints_check_box: CheckBox = %NextStepHintsCheckBox
 @onready var custom_instructions_edit: TextEdit = %CustomInstructionsEdit
 @onready var archived_workspace_filter_option_button: OptionButton = %WorkspaceFilterOptionButton
 @onready var search_archived_chat_line_edit: LineEdit = %SearchArchivedChatLineEdit
@@ -57,6 +58,7 @@ func setup_provider_config(status: Dictionary, frontend_config: Dictionary = {})
 	var configured: bool = bool(status.get("configured", false))
 	backend_url_line_edit.text = str(frontend_config.get("backendUrl", "ws://localhost:8080"))
 	custom_instructions_edit.text = str(frontend_config.get("customInstructions", ""))
+	next_step_hints_check_box.button_pressed = bool(frontend_config.get("nextStepHintsEnabled", false))
 	_update_custom_instructions_status()
 
 	if configured:
@@ -98,7 +100,8 @@ func _on_confirmed() -> void:
 	var api_key: String = deepseek_api_key_line_edit.text.strip_edges()
 	frontend_config_save_requested.emit(
 		backend_url_line_edit.text.strip_edges(),
-		custom_instructions_edit.text.strip_edges()
+		custom_instructions_edit.text.strip_edges(),
+		next_step_hints_check_box.button_pressed
 	)
 	provider_config_save_requested.emit(api_key)
 	queue_free()

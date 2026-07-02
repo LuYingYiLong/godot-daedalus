@@ -8,16 +8,21 @@ const TOOL_CALL_ITEM_SCENE: PackedScene = preload("uid://c2a5o7qi58fus")
 const STATUS_ITEM_SCENE: PackedScene = preload("uid://cljnln76ye4o5")
 const SESSION_ITEM_SCENE: PackedScene = preload("uid://bic1etsxo1epd")
 const TODO_ITEM_SCENE: PackedScene = preload("uid://d3i7c6i2shbyl")
+const ADDITIONAL_CONTEXT_ITEM_SCENE: PackedScene = preload("uid://rfwvgjocqqva")
 const CONTEXT_POPUP_MENU_UID: String = "uid://brjsrkaconcvu"
 const CONTEXT_ICON_DIR: String = "res://addons/godot_daedalus/assets/icons"
 const CONFIG_BACKEND_URL_SETTING: String = "godot_daedalus/backend_url"
 const CONFIG_MODEL_ID_SETTING: String = "godot_daedalus/model_id"
 const CONFIG_APPROVAL_MODE_SETTING: String = "godot_daedalus/approval_mode"
 const CONFIG_CUSTOM_INSTRUCTIONS_SETTING: String = "godot_daedalus/custom_instructions"
+const CONFIG_NEXT_STEP_HINTS_SETTING: String = "godot_daedalus/next_step_hints_enabled"
 const CONNECTED_ICON: Texture2D = preload("uid://1eh7wxaewfje")
 const CONNECT_FAILED_ICON: Texture2D = preload("uid://chihcwe7t0f2g")
 const DISCONNECTED_ICON: Texture2D = preload("uid://cq15q550jtb21")
 const STAUTS_WARNING: Texture2D = preload("uid://gytxgaev43it")
+const GUIDE_NOW_ICON: Texture2D = preload("uid://3dsfgra6pd2m")
+const EDIT_ICON: Texture2D = preload("uid://pj7m0o4eos6a")
+const DELETE_ICON: Texture2D = preload("uid://qpmvpq6q2q60")
 const SETTINGS_MENU_UID: String = "uid://dp3tsanvojx2k"
 const MAX_CONNECT_ATTEMPTS: int = 5
 const CONNECT_RETRY_SECONDS: float = 0.8
@@ -44,6 +49,25 @@ const MESSAGE_QUEUE_STATUS_APPROVAL: StringName = &"approval"
 const MESSAGE_QUEUE_STATUS_FAILED: StringName = &"failed"
 const MESSAGE_QUEUE_STATUS_CANCELLED: StringName = &"cancelled"
 const MESSAGE_QUEUE_STATUS_REJECTED: StringName = &"rejected"
+const GUIDE_STATUS_DRAFT: StringName = &"draft"
+const GUIDE_STATUS_SUBMITTING: StringName = &"submitting"
+const GUIDE_STATUS_PENDING: StringName = &"pending"
+const GUIDE_STATUS_DELETING: StringName = &"deleting"
+const GUIDE_STATUS_APPLIED: StringName = &"applied"
+const GUIDE_STATUS_FAILED: StringName = &"failed"
+const MESSAGE_TREE_STATUS_COLUMN: int = 0
+const MESSAGE_TREE_MESSAGE_COLUMN: int = 1
+const MESSAGE_TREE_ACTIONS_COLUMN: int = 2
+const MESSAGE_TREE_BUTTON_GUIDE_NOW: int = 1
+const MESSAGE_TREE_BUTTON_EDIT: int = 2
+const MESSAGE_TREE_BUTTON_DELETE: int = 3
+const NEXT_STEP_HINT_ACTION_PREFIX: String = "next-step-hint:"
+const ADD_CONTEXT_SELECTED_NODES_ID: int = 1
+const ADD_CONTEXT_ACTIVE_SCENE_ID: int = 2
+const ADD_CONTEXT_FILE_ID: int = 3
+const ADD_CONTEXT_FOLDER_ID: int = 4
+const ADD_CONTEXT_CLEAR_UNPINNED_ID: int = 5
+const LIVE_EDITOR_SELECTION_CONTEXT_ID: String = "editor-selection-live"
 
 const MODEL_IDS: Array[String] = [
 	"deepseek-v4-flash",
@@ -92,6 +116,9 @@ const APPROVAL_MODE_IDS: Array[String] = [
 @onready var todo_container: VBoxContainer = %TodoContainer
 @onready var message_queue_panel: PanelContainer = %MessageQueue
 @onready var message_tree: Tree = %MessageTree
+@onready var additional_context_viewer: ScrollContainer = %AdditionalContextViewer
+@onready var additional_context_container: HBoxContainer = %AdditionalContextContainer
+@onready var add_context_button: MenuButton = %AddContextButton
 
 var socket: WebSocketPeer = WebSocketPeer.new()
 var socket_ready: bool
@@ -107,6 +134,7 @@ var request_id: int
 var active_stream_id: String
 var active_session_id: String
 var pending_chat_text: String
+var pending_chat_additional_context: Array[Dictionary] = []
 var pending_approval_id: String
 var sessions_by_id: Dictionary[String, Dictionary]
 var session_ids_in_order: Array[String]
@@ -161,11 +189,26 @@ var context_popup_open_after_info: bool
 var active_settings_menu: Node
 var backend_url: String = DEFAULT_BACKEND_URL
 var custom_instructions: String
+var next_step_hints_enabled: bool
 var pending_provider_config_api_key: String
 var pending_provider_config_save_after_connect: bool
 var queued_messages: Array[Dictionary] = []
 var message_queue_next_id: int
 var active_queue_message_id: int
+var manual_guides: Array[Dictionary] = []
+var manual_guide_next_id: int
+var editing_guide_local_id: String
+var next_step_hint_request_id: String
+var next_step_hint_anchor_request_id: String
+var next_step_hint_entry_ids: Array[String] = []
+var next_step_hints_by_action_id: Dictionary[String, String] = {}
+var editor_plugin: EditorPlugin
+var editor_interface: EditorInterface
+var editor_selection: EditorSelection
+var editor_undo_redo: EditorUndoRedoManager
+var editor_context_update_queued: bool
+var additional_context_items: Array[Dictionary] = []
+var additional_context_next_id: int
 
 
 func _ready() -> void:
@@ -178,8 +221,10 @@ func _ready() -> void:
 	_setup_timeline_containers()
 	_connect_timeline_signals()
 	_setup_message_tree()
+	_setup_add_context_menu()
 	_render_message_panel()
 	_clear_template_items()
+	_render_additional_context_items()
 	_update_send_state()
 	_set_context_length_icon(0.0, true)
 	_start_backend_connection_attempts()
@@ -208,6 +253,10 @@ func _input(event: InputEvent) -> void:
 
 	if event.keycode == KEY_ENTER:
 		if event.shift_pressed:
+			return
+		if event.ctrl_pressed:
+			_create_or_update_manual_guide_from_text_edit()
+			accept_event()
 			return
 		_on_send_button_pressed()
 		accept_event()
@@ -240,9 +289,11 @@ func _load_frontend_config() -> void:
 	_ensure_frontend_setting(editor_settings, CONFIG_MODEL_ID_SETTING, MODEL_IDS[0])
 	_ensure_frontend_setting(editor_settings, CONFIG_APPROVAL_MODE_SETTING, APPROVAL_MODE_IDS[0])
 	_ensure_frontend_setting(editor_settings, CONFIG_CUSTOM_INSTRUCTIONS_SETTING, "")
+	_ensure_frontend_setting(editor_settings, CONFIG_NEXT_STEP_HINTS_SETTING, false)
 
 	backend_url = _normalize_backend_url(str(editor_settings.get_setting(CONFIG_BACKEND_URL_SETTING)))
 	custom_instructions = str(editor_settings.get_setting(CONFIG_CUSTOM_INSTRUCTIONS_SETTING)).strip_edges()
+	next_step_hints_enabled = bool(editor_settings.get_setting(CONFIG_NEXT_STEP_HINTS_SETTING))
 	if not _select_model_id(str(editor_settings.get_setting(CONFIG_MODEL_ID_SETTING))):
 		_select_model_id(MODEL_IDS[0])
 	if not _select_approval_mode(str(editor_settings.get_setting(CONFIG_APPROVAL_MODE_SETTING))):
@@ -301,6 +352,11 @@ func _select_approval_mode(approval_mode: String) -> bool:
 
 func _clear_template_items() -> void:
 	_setup_timeline_containers()
+	if additional_context_container == null:
+		return
+
+	for child: Node in additional_context_container.get_children():
+		child.queue_free()
 
 
 func _setup_timeline_containers() -> void:
@@ -333,18 +389,256 @@ func _connect_timeline_signals() -> void:
 
 
 func _setup_message_tree() -> void:
-	message_tree.columns = 2
+	message_tree.columns = 3
 	message_tree.column_titles_visible = true
 	message_tree.hide_root = true
-	message_tree.set_column_title(0, "Status")
-	message_tree.set_column_title(1, "Message")
+	message_tree.set_column_title(MESSAGE_TREE_STATUS_COLUMN, "Status")
+	message_tree.set_column_title(MESSAGE_TREE_MESSAGE_COLUMN, "Message")
+	message_tree.set_column_title(MESSAGE_TREE_ACTIONS_COLUMN, "Actions")
+	message_tree.set_column_expand(MESSAGE_TREE_STATUS_COLUMN, false)
+	message_tree.set_column_expand(MESSAGE_TREE_MESSAGE_COLUMN, true)
+	message_tree.set_column_expand(MESSAGE_TREE_ACTIONS_COLUMN, false)
+	message_tree.set_column_custom_minimum_width(MESSAGE_TREE_STATUS_COLUMN, 82)
+	message_tree.set_column_custom_minimum_width(MESSAGE_TREE_ACTIONS_COLUMN, 72)
+	if not message_tree.button_clicked.is_connected(_on_message_tree_button_clicked):
+		message_tree.button_clicked.connect(_on_message_tree_button_clicked)
+
+
+func _setup_add_context_menu() -> void:
+	if add_context_button == null:
+		return
+
+	add_context_button.tooltip_text = "添加当前编辑器或项目上下文到下一条消息"
+	var popup_menu: PopupMenu = add_context_button.get_popup()
+	popup_menu.clear()
+	popup_menu.add_item("添加选中节点", ADD_CONTEXT_SELECTED_NODES_ID)
+	popup_menu.add_item("添加当前场景", ADD_CONTEXT_ACTIVE_SCENE_ID)
+	popup_menu.add_separator()
+	popup_menu.add_item("添加文件", ADD_CONTEXT_FILE_ID)
+	popup_menu.add_item("添加文件夹", ADD_CONTEXT_FOLDER_ID)
+	popup_menu.add_separator()
+	popup_menu.add_item("清除未固定上下文", ADD_CONTEXT_CLEAR_UNPINNED_ID)
+	if not popup_menu.id_pressed.is_connected(_on_add_context_menu_id_pressed):
+		popup_menu.id_pressed.connect(_on_add_context_menu_id_pressed)
+
+
+func _on_add_context_menu_id_pressed(menu_id: int) -> void:
+	if menu_id == ADD_CONTEXT_SELECTED_NODES_ID:
+		_add_selected_nodes_context()
+	elif menu_id == ADD_CONTEXT_ACTIVE_SCENE_ID:
+		_add_active_scene_context()
+	elif menu_id == ADD_CONTEXT_FILE_ID:
+		_show_add_context_resource_dialog(EditorFileDialog.FILE_MODE_OPEN_FILE, "file")
+	elif menu_id == ADD_CONTEXT_FOLDER_ID:
+		_show_add_context_resource_dialog(EditorFileDialog.FILE_MODE_OPEN_DIR, "folder")
+	elif menu_id == ADD_CONTEXT_CLEAR_UNPINNED_ID:
+		_clear_unpinned_additional_context_items()
+
+
+func _show_add_context_resource_dialog(file_mode: int, context_kind: String) -> void:
+	var resource_dialog: EditorFileDialog = EditorFileDialog.new()
+	resource_dialog.access = EditorFileDialog.ACCESS_RESOURCES
+	resource_dialog.file_mode = file_mode
+	resource_dialog.title = "添加上下文"
+	resource_dialog.size = Vector2i(720, 480)
+	add_child(resource_dialog)
+
+	if context_kind == "folder":
+		resource_dialog.dir_selected.connect(_on_add_context_resource_selected.bind(context_kind, resource_dialog))
+	else:
+		resource_dialog.file_selected.connect(_on_add_context_resource_selected.bind(context_kind, resource_dialog))
+	resource_dialog.canceled.connect(resource_dialog.queue_free)
+	resource_dialog.popup_centered_ratio(0.7)
+
+
+func _on_add_context_resource_selected(resource_path: String, context_kind: String, resource_dialog: EditorFileDialog) -> void:
+	if resource_dialog != null and is_instance_valid(resource_dialog):
+		resource_dialog.queue_free()
+
+	var normalized_path: String = resource_path.strip_edges()
+	if normalized_path.is_empty():
+		return
+
+	var context: Dictionary = {
+		"id": _make_additional_context_id(context_kind, normalized_path, ""),
+		"kind": context_kind,
+		"title": normalized_path.get_file() if context_kind != "folder" else normalized_path.trim_suffix("/").get_file(),
+		"subtitle": normalized_path,
+		"pinned": false,
+		"source": "manual",
+		"resourcePath": normalized_path,
+		"summary": "用户为本轮消息附加了项目 %s 引用；仅在需要时通过 MCP 读取内容。" % context_kind
+	}
+	_add_or_replace_additional_context(context)
+
+
+func _add_selected_nodes_context() -> void:
+	if editor_selection == null:
+		_upsert_connection_status_entry("warning", "编辑器上下文不可用", "当前 Dock 没有获得 Godot EditorSelection。")
+		return
+
+	var edited_root: Node = _get_edited_scene_root()
+	if edited_root == null:
+		_upsert_connection_status_entry("warning", "没有打开场景", "请先在编辑器中打开一个场景。")
+		return
+
+	var selected_nodes: Array[Node] = editor_selection.get_selected_nodes()
+	if selected_nodes.is_empty():
+		_upsert_connection_status_entry("warning", "没有选中节点", "请先在场景树中选择一个或多个节点。")
+		return
+
+	for selected_node: Node in selected_nodes:
+		if selected_node == null:
+			continue
+		_add_or_replace_additional_context(_create_node_additional_context(selected_node, edited_root))
+
+
+func _add_active_scene_context() -> void:
+	var edited_root: Node = _get_edited_scene_root()
+	if edited_root == null:
+		_upsert_connection_status_entry("warning", "没有打开场景", "请先在编辑器中打开一个场景。")
+		return
+
+	var scene_path: String = _get_scene_resource_path(edited_root)
+	var scene_title: String = scene_path.get_file() if not scene_path.is_empty() else edited_root.name
+	var context: Dictionary = {
+		"id": _make_additional_context_id("scene", scene_path, "."),
+		"kind": "scene",
+		"title": scene_title,
+		"subtitle": "Active scene",
+		"pinned": false,
+		"source": "editor",
+		"resourcePath": scene_path,
+		"nodePath": ".",
+		"nodeType": edited_root.get_class(),
+		"summary": "Current open Godot editor scene.",
+		"data": _serialize_editor_node_summary(edited_root, edited_root)
+	}
+	_add_or_replace_additional_context(context)
+
+
+func _create_node_additional_context(target_node: Node, edited_root: Node) -> Dictionary:
+	var scene_path: String = _get_scene_resource_path(edited_root)
+	var node_path: String = _get_relative_node_path(edited_root, target_node)
+	var script_path: String = _get_node_script_path(target_node)
+	var node_type: String = target_node.get_class()
+	var context: Dictionary = {
+		"id": _make_additional_context_id("node", scene_path, node_path),
+		"kind": "node",
+		"title": target_node.name,
+		"subtitle": "%s in %s" % [node_type, scene_path.get_file() if not scene_path.is_empty() else edited_root.name],
+		"pinned": false,
+		"source": "editor",
+		"resourcePath": scene_path,
+		"nodePath": node_path,
+		"nodeType": node_type,
+		"summary": _summarize_editor_node(target_node),
+		"data": _serialize_editor_node_summary(target_node, edited_root)
+	}
+	if not script_path.is_empty():
+		context["scriptPath"] = script_path
+	return context
+
+
+func _add_or_replace_additional_context(context: Dictionary) -> void:
+	var context_id: String = str(context.get("id", ""))
+	if context_id.is_empty():
+		context["id"] = _make_additional_context_id(str(context.get("kind", "context")), str(context.get("resourcePath", "")), str(context.get("nodePath", "")))
+
+	var context_key: String = _make_additional_context_key(context)
+	for index: int in range(additional_context_items.size()):
+		var existing_context: Dictionary = additional_context_items[index]
+		if _make_additional_context_key(existing_context) == context_key:
+			context["pinned"] = bool(existing_context.get("pinned", false))
+			additional_context_items[index] = context.duplicate(true)
+			_render_additional_context_items()
+			return
+
+	additional_context_items.append(context.duplicate(true))
+	_render_additional_context_items()
+
+
+func _render_additional_context_items() -> void:
+	if additional_context_container == null:
+		return
+
+	for child: Node in additional_context_container.get_children():
+		child.queue_free()
+
+	additional_context_viewer.visible = not additional_context_items.is_empty()
+	if additional_context_items.is_empty():
+		return
+
+	for context: Dictionary in additional_context_items:
+		var context_item: Node = ADDITIONAL_CONTEXT_ITEM_SCENE.instantiate()
+		additional_context_container.add_child(context_item)
+		context_item.call("setup", context)
+		if context_item.has_signal("pin_toggled"):
+			context_item.connect("pin_toggled", Callable(self, "_on_additional_context_pin_toggled"))
+		if context_item.has_signal("remove_requested"):
+			context_item.connect("remove_requested", Callable(self, "_on_additional_context_remove_requested"))
+
+
+func _on_additional_context_pin_toggled(context_id: String, pinned: bool) -> void:
+	for index: int in range(additional_context_items.size()):
+		var context: Dictionary = additional_context_items[index]
+		if str(context.get("id", "")) == context_id:
+			context["pinned"] = pinned
+			additional_context_items[index] = context
+			break
+
+
+func _on_additional_context_remove_requested(context_id: String) -> void:
+	for index: int in range(additional_context_items.size() - 1, -1, -1):
+		var context: Dictionary = additional_context_items[index]
+		if str(context.get("id", "")) == context_id:
+			additional_context_items.remove_at(index)
+			break
+	_render_additional_context_items()
+
+
+func _get_additional_context_snapshot() -> Array[Dictionary]:
+	return _clone_additional_context_array(additional_context_items)
+
+
+func _clone_additional_context_array(source_contexts: Array) -> Array[Dictionary]:
+	var cloned_contexts: Array[Dictionary] = []
+	for context_value: Variant in source_contexts:
+		if typeof(context_value) != TYPE_DICTIONARY:
+			continue
+		var context_dictionary: Dictionary = context_value as Dictionary
+		cloned_contexts.append(context_dictionary.duplicate(true))
+	return cloned_contexts
+
+
+func _clear_unpinned_additional_context_items() -> void:
+	var retained_contexts: Array[Dictionary] = []
+	for context: Dictionary in additional_context_items:
+		if bool(context.get("pinned", false)):
+			retained_contexts.append(context)
+	additional_context_items = retained_contexts
+	_render_additional_context_items()
+
+
+func _make_additional_context_id(context_kind: String, resource_path: String, node_path: String) -> String:
+	additional_context_next_id += 1
+	var key_text: String = "%s:%s:%s:%d" % [context_kind, resource_path, node_path, additional_context_next_id]
+	return "ctx-%d-%d" % [Time.get_ticks_msec(), abs(hash(key_text))]
+
+
+func _make_additional_context_key(context: Dictionary) -> String:
+	return "%s\n%s\n%s" % [
+		str(context.get("kind", "")),
+		str(context.get("resourcePath", "")),
+		str(context.get("nodePath", ""))
+	]
 
 
 func _render_message_panel() -> void:
 	if message_queue_panel == null or message_tree == null:
 		return
 
-	var should_show_panel: bool = background_context_viewer.visible and not queued_messages.is_empty()
+	var should_show_panel: bool = background_context_viewer.visible and (not queued_messages.is_empty() or not manual_guides.is_empty())
 	message_queue_panel.visible = should_show_panel
 	if not should_show_panel:
 		message_tree.clear()
@@ -361,11 +655,36 @@ func _render_message_panel() -> void:
 			"status": str(queued_message.get("status", MESSAGE_QUEUE_STATUS_PENDING)),
 			"message": str(queued_message.get("text", ""))
 		}
-		queue_item.set_text(0, _format_queue_status(str(queued_message.get("status", MESSAGE_QUEUE_STATUS_PENDING))))
-		queue_item.set_text(1, _format_message_preview(str(queued_message.get("text", ""))))
-		queue_item.set_tooltip_text(1, str(queued_message.get("text", "")))
-		queue_item.set_metadata(0, metadata)
-		queue_item.set_metadata(1, metadata)
+		var queue_status: String = str(queued_message.get("status", MESSAGE_QUEUE_STATUS_PENDING))
+		queue_item.set_text(MESSAGE_TREE_STATUS_COLUMN, _format_queue_status(queue_status))
+		queue_item.set_text(MESSAGE_TREE_MESSAGE_COLUMN, _format_message_preview(str(queued_message.get("text", ""))))
+		queue_item.set_tooltip_text(MESSAGE_TREE_MESSAGE_COLUMN, str(queued_message.get("text", "")))
+		queue_item.set_metadata(MESSAGE_TREE_STATUS_COLUMN, metadata)
+		queue_item.set_metadata(MESSAGE_TREE_MESSAGE_COLUMN, metadata)
+		queue_item.set_metadata(MESSAGE_TREE_ACTIONS_COLUMN, metadata)
+		queue_item.add_button(MESSAGE_TREE_ACTIONS_COLUMN, EDIT_ICON, MESSAGE_TREE_BUTTON_EDIT, not _can_edit_queue_message(queue_status), "Edit")
+		queue_item.add_button(MESSAGE_TREE_ACTIONS_COLUMN, DELETE_ICON, MESSAGE_TREE_BUTTON_DELETE, not _can_delete_queue_message(queue_status), "Delete")
+
+	for manual_guide: Dictionary in manual_guides:
+		var guide_item: TreeItem = message_tree.create_item(root_item)
+		var guide_status: String = str(manual_guide.get("status", GUIDE_STATUS_DRAFT))
+		var guide_metadata: Dictionary = {
+			"kind": "guide",
+			"local_id": str(manual_guide.get("local_id", "")),
+			"guide_id": str(manual_guide.get("guide_id", "")),
+			"client_guide_id": str(manual_guide.get("client_guide_id", "")),
+			"status": guide_status,
+			"message": str(manual_guide.get("text", ""))
+		}
+		guide_item.set_text(MESSAGE_TREE_STATUS_COLUMN, _format_guide_status(guide_status))
+		guide_item.set_text(MESSAGE_TREE_MESSAGE_COLUMN, _format_message_preview(str(manual_guide.get("text", ""))))
+		guide_item.set_tooltip_text(MESSAGE_TREE_MESSAGE_COLUMN, str(manual_guide.get("text", "")))
+		guide_item.set_metadata(MESSAGE_TREE_STATUS_COLUMN, guide_metadata)
+		guide_item.set_metadata(MESSAGE_TREE_MESSAGE_COLUMN, guide_metadata)
+		guide_item.set_metadata(MESSAGE_TREE_ACTIONS_COLUMN, guide_metadata)
+		guide_item.add_button(MESSAGE_TREE_ACTIONS_COLUMN, GUIDE_NOW_ICON, MESSAGE_TREE_BUTTON_GUIDE_NOW, not _can_submit_manual_guide(guide_status), "Guide now")
+		guide_item.add_button(MESSAGE_TREE_ACTIONS_COLUMN, EDIT_ICON, MESSAGE_TREE_BUTTON_EDIT, not _can_edit_manual_guide(guide_status), "Edit")
+		guide_item.add_button(MESSAGE_TREE_ACTIONS_COLUMN, DELETE_ICON, MESSAGE_TREE_BUTTON_DELETE, not _can_delete_manual_guide(guide_status), "Delete")
 
 
 func _format_queue_status(status: String) -> String:
@@ -385,12 +704,56 @@ func _format_queue_status(status: String) -> String:
 	return status.capitalize()
 
 
+func _can_edit_queue_message(status: String) -> bool:
+	return status == str(MESSAGE_QUEUE_STATUS_PENDING) or status == str(MESSAGE_QUEUE_STATUS_FAILED) or status == str(MESSAGE_QUEUE_STATUS_CANCELLED) or status == str(MESSAGE_QUEUE_STATUS_REJECTED)
+
+
+func _can_delete_queue_message(status: String) -> bool:
+	return status == str(MESSAGE_QUEUE_STATUS_PENDING) or status == str(MESSAGE_QUEUE_STATUS_FAILED) or status == str(MESSAGE_QUEUE_STATUS_CANCELLED) or status == str(MESSAGE_QUEUE_STATUS_REJECTED)
+
+
+func _format_guide_status(status: String) -> String:
+	if status == str(GUIDE_STATUS_DRAFT):
+		return "Guide"
+	if status == str(GUIDE_STATUS_SUBMITTING):
+		return "Sending"
+	if status == str(GUIDE_STATUS_PENDING):
+		return "Pending"
+	if status == str(GUIDE_STATUS_DELETING):
+		return "Deleting"
+	if status == str(GUIDE_STATUS_APPLIED):
+		return "Applied"
+	if status == str(GUIDE_STATUS_FAILED):
+		return "Failed"
+
+	return status.capitalize()
+
+
+func _can_submit_manual_guide(status: String) -> bool:
+	return status == str(GUIDE_STATUS_DRAFT) or status == str(GUIDE_STATUS_FAILED)
+
+
+func _can_edit_manual_guide(status: String) -> bool:
+	return status == str(GUIDE_STATUS_DRAFT) or status == str(GUIDE_STATUS_PENDING) or status == str(GUIDE_STATUS_FAILED) or status == str(GUIDE_STATUS_APPLIED)
+
+
+func _can_delete_manual_guide(status: String) -> bool:
+	return status != str(GUIDE_STATUS_SUBMITTING) and status != str(GUIDE_STATUS_DELETING)
+
+
 func _format_message_preview(message_text: String) -> String:
 	var preview_text: String = message_text.replace("\n", " ").strip_edges()
 	if preview_text.length() > 96:
 		return preview_text.substr(0, 96) + "..."
 
 	return preview_text
+
+
+func _string_or_empty(value: Variant) -> String:
+	if value == null:
+		return ""
+
+	return str(value)
 
 
 func _on_message_tree_item_activated() -> void:
@@ -404,6 +767,12 @@ func _on_message_tree_item_activated() -> void:
 
 	var metadata: Dictionary = metadata_value as Dictionary
 	var item_kind: String = str(metadata.get("kind", ""))
+	if item_kind == "guide":
+		var guide_message_text: String = str(metadata.get("message", ""))
+		if not guide_message_text.is_empty():
+			text_edit.text = guide_message_text
+			text_edit.grab_focus()
+		return
 	if item_kind != "queue":
 		return
 
@@ -416,6 +785,22 @@ func _on_message_tree_item_activated() -> void:
 	if not queued_message_text.is_empty():
 		text_edit.text = queued_message_text
 		text_edit.grab_focus()
+
+
+func _on_message_tree_button_clicked(item: TreeItem, _column: int, button_id: int, mouse_button_index: int) -> void:
+	if mouse_button_index != MOUSE_BUTTON_LEFT:
+		return
+
+	var metadata_value: Variant = item.get_metadata(MESSAGE_TREE_STATUS_COLUMN)
+	if typeof(metadata_value) != TYPE_DICTIONARY:
+		return
+
+	var metadata: Dictionary = metadata_value as Dictionary
+	var item_kind: String = str(metadata.get("kind", ""))
+	if item_kind == "queue":
+		_handle_queue_tree_action(button_id, metadata)
+	elif item_kind == "guide":
+		_handle_guide_tree_action(button_id, metadata)
 
 
 func _on_text_edit_text_changed() -> void:
@@ -589,6 +974,7 @@ func _handle_recovered_session_open(result_dictionary: Dictionary) -> void:
 	var metadata_value: Variant = result_dictionary.get("metadata", {})
 	if typeof(metadata_value) == TYPE_DICTIONARY:
 		_apply_session_metadata(metadata_value as Dictionary)
+	_sync_pending_guides_from_result(result_dictionary)
 	_apply_latest_workflow_snapshot(result_dictionary)
 	_send_request("session.info", {}, "session-info")
 	_finalize_recovery_status(true)
@@ -608,6 +994,12 @@ func _finalize_recovery_status(session_restored: bool) -> void:
 func _on_status_item_action_requested(action_id: String) -> void:
 	if action_id == "reconnect":
 		_restart_backend_connection(true)
+	elif action_id.begins_with(NEXT_STEP_HINT_ACTION_PREFIX):
+		var hint_message: String = next_step_hints_by_action_id.get(action_id, "")
+		if not hint_message.is_empty():
+			text_edit.text = hint_message
+			text_edit.grab_focus()
+			_update_send_state()
 
 
 func _load_provider_config() -> void:
@@ -623,6 +1015,539 @@ func _send_environment_config() -> void:
 		},
 		"environment-configure"
 	)
+	_queue_editor_context_update()
+
+
+func setup_editor_bridge(plugin: EditorPlugin) -> void:
+	editor_plugin = plugin
+	if editor_plugin == null:
+		return
+
+	editor_interface = editor_plugin.get_editor_interface()
+	editor_selection = editor_interface.get_selection()
+	editor_undo_redo = editor_plugin.get_undo_redo()
+	if editor_selection != null and not editor_selection.selection_changed.is_connected(_on_editor_selection_changed):
+		editor_selection.selection_changed.connect(_on_editor_selection_changed)
+	_queue_editor_context_update()
+
+
+func _on_editor_selection_changed() -> void:
+	_queue_editor_context_update()
+
+
+func _queue_editor_context_update() -> void:
+	if editor_context_update_queued:
+		return
+
+	editor_context_update_queued = true
+	call_deferred("_send_editor_context_update")
+
+
+func _send_editor_context_update() -> void:
+	editor_context_update_queued = false
+	if editor_interface == null:
+		return
+
+	var edited_root: Node = _get_edited_scene_root()
+	var selected_nodes: Array[Dictionary] = []
+	if editor_selection != null and edited_root != null:
+		var raw_selected_nodes: Array[Node] = editor_selection.get_selected_nodes()
+		for selected_node: Node in raw_selected_nodes:
+			if selected_node == null:
+				continue
+			selected_nodes.append(_serialize_editor_node_summary(selected_node, edited_root))
+
+	_sync_live_editor_selection_context(edited_root, selected_nodes)
+	if not _is_socket_open():
+		return
+
+	var params: Dictionary[String, Variant] = {
+		"hasEditor": true,
+		"workspaceId": ProjectSettings.globalize_path("res://"),
+		"activeScenePath": _get_scene_resource_path(edited_root) if edited_root != null else "",
+		"selectedNodeCount": selected_nodes.size(),
+		"selectedNodes": selected_nodes,
+		"updatedAt": _get_utc_timestamp()
+	}
+	if edited_root != null:
+		params["editedSceneRoot"] = _serialize_editor_node_summary(edited_root, edited_root)
+
+	_send_request("editor.context.update", params, "editor-context")
+
+
+func _sync_live_editor_selection_context(edited_root: Node, selected_nodes: Array[Dictionary]) -> void:
+	var existing_index: int = _find_additional_context_index(LIVE_EDITOR_SELECTION_CONTEXT_ID)
+	if existing_index >= 0:
+		var existing_context: Dictionary = additional_context_items[existing_index]
+		if bool(existing_context.get("pinned", false)):
+			return
+
+	if edited_root == null or selected_nodes.is_empty():
+		if existing_index >= 0:
+			additional_context_items.remove_at(existing_index)
+			_render_additional_context_items()
+		return
+
+	var scene_path: String = _get_scene_resource_path(edited_root)
+	var title_text: String = "选中节点 (%d)" % selected_nodes.size()
+	var selected_names: Array[String] = []
+	for selected_node_info: Dictionary in selected_nodes:
+		selected_names.append(str(selected_node_info.get("name", "")))
+
+	var context: Dictionary = {
+		"id": LIVE_EDITOR_SELECTION_CONTEXT_ID,
+		"kind": "editor_selection",
+		"title": title_text,
+		"subtitle": scene_path,
+		"pinned": false,
+		"source": "editor",
+		"resourcePath": scene_path,
+		"summary": "当前编辑器选中节点：%s" % ", ".join(selected_names),
+		"data": {
+			"selectedNodes": selected_nodes
+		}
+	}
+
+	if existing_index >= 0:
+		additional_context_items[existing_index] = context
+	else:
+		additional_context_items.append(context)
+	_render_additional_context_items()
+
+
+func _find_additional_context_index(context_id: String) -> int:
+	for index: int in range(additional_context_items.size()):
+		var context: Dictionary = additional_context_items[index]
+		if str(context.get("id", "")) == context_id:
+			return index
+	return -1
+
+
+func _get_edited_scene_root() -> Node:
+	if editor_interface == null:
+		return null
+
+	return editor_interface.get_edited_scene_root()
+
+
+func _get_scene_resource_path(scene_root: Node) -> String:
+	if scene_root == null:
+		return ""
+	return scene_root.scene_file_path
+
+
+func _get_relative_node_path(scene_root: Node, target_node: Node) -> String:
+	if scene_root == null or target_node == null:
+		return ""
+	if scene_root == target_node:
+		return "."
+	return str(scene_root.get_path_to(target_node))
+
+
+func _find_editor_node(scene_path: String, node_path: String) -> Node:
+	var edited_root: Node = _get_edited_scene_root()
+	if edited_root == null:
+		return null
+
+	var requested_scene_path: String = scene_path.strip_edges()
+	if not requested_scene_path.is_empty() and requested_scene_path != _get_scene_resource_path(edited_root):
+		return null
+
+	var requested_node_path: String = node_path.strip_edges()
+	if requested_node_path.is_empty() or requested_node_path == ".":
+		return edited_root
+	if not edited_root.has_node(NodePath(requested_node_path)):
+		return null
+
+	return edited_root.get_node(NodePath(requested_node_path))
+
+
+func _serialize_editor_node_summary(target_node: Node, scene_root: Node) -> Dictionary:
+	var script_path: String = _get_node_script_path(target_node)
+	var summary: Dictionary = {
+		"name": target_node.name,
+		"path": _get_relative_node_path(scene_root, target_node),
+		"type": target_node.get_class(),
+		"ownerPath": _get_relative_node_path(scene_root, target_node.owner) if target_node.owner != null else "",
+		"childCount": target_node.get_child_count(),
+		"properties": _get_node_key_properties(target_node)
+	}
+	if not script_path.is_empty():
+		summary["scriptPath"] = script_path
+	return summary
+
+
+func _serialize_editor_node_deep(target_node: Node, scene_root: Node, depth: int = 0) -> Dictionary:
+	var summary: Dictionary = _serialize_editor_node_summary(target_node, scene_root)
+	if depth >= 2:
+		return summary
+
+	var children: Array[Dictionary] = []
+	for child_node: Node in target_node.get_children():
+		children.append(_serialize_editor_node_deep(child_node, scene_root, depth + 1))
+	summary["children"] = children
+	return summary
+
+
+func _get_node_script_path(target_node: Node) -> String:
+	var script_value: Variant = target_node.get_script()
+	if script_value is Script:
+		var script_resource: Script = script_value as Script
+		return script_resource.resource_path
+	return ""
+
+
+func _get_node_key_properties(target_node: Node) -> Dictionary:
+	var properties: Dictionary = {}
+	for property_name: String in ["text", "tooltip_text", "visible", "disabled", "placeholder_text", "position", "size", "custom_minimum_size"]:
+		if _node_has_property(target_node, property_name):
+			var property_value: Variant = target_node.get(property_name)
+			properties[property_name] = _compact_variant_for_json(property_value)
+	return properties
+
+
+func _node_has_property(target_node: Node, property_name: String) -> bool:
+	for property_info: Dictionary in target_node.get_property_list():
+		if str(property_info.get("name", "")) == property_name:
+			return true
+	return false
+
+
+func _compact_variant_for_json(value: Variant) -> Variant:
+	if value is Vector2:
+		var vector_value: Vector2 = value as Vector2
+		return { "x": vector_value.x, "y": vector_value.y }
+	if value is Vector2i:
+		var vector_i_value: Vector2i = value as Vector2i
+		return { "x": vector_i_value.x, "y": vector_i_value.y }
+	if value is Color:
+		var color_value: Color = value as Color
+		return color_value.to_html(true)
+	if value is Resource:
+		var resource_value: Resource = value as Resource
+		return resource_value.resource_path
+	if typeof(value) == TYPE_ARRAY:
+		var source_array: Array = value as Array
+		var compact_array: Array = []
+		for item: Variant in source_array:
+			compact_array.append(_compact_variant_for_json(item))
+		return compact_array
+	if typeof(value) == TYPE_DICTIONARY:
+		var source_dictionary: Dictionary = value as Dictionary
+		var compact_dictionary: Dictionary = {}
+		for key_value: Variant in source_dictionary.keys():
+			compact_dictionary[str(key_value)] = _compact_variant_for_json(source_dictionary[key_value])
+		return compact_dictionary
+	return value
+
+
+func _summarize_editor_node(target_node: Node) -> String:
+	var node_path: String = ""
+	var edited_root: Node = _get_edited_scene_root()
+	if edited_root != null:
+		node_path = _get_relative_node_path(edited_root, target_node)
+	return "%s `%s` (%d children)" % [target_node.get_class(), node_path, target_node.get_child_count()]
+
+
+func _handle_editor_tool_requested(data: Dictionary) -> void:
+	var call_id: String = str(data.get("callId", ""))
+	var tool_name: String = str(data.get("toolName", ""))
+	var args_value: Variant = data.get("args", {})
+	var args: Dictionary = args_value as Dictionary if typeof(args_value) == TYPE_DICTIONARY else {}
+	var ok: bool = true
+	var result: Variant = {}
+	var error_message: String = ""
+
+	if call_id.is_empty():
+		return
+
+	if tool_name == "inspect_node":
+		result = _execute_editor_inspect_node(args)
+	elif tool_name == "apply_scene_patch":
+		result = _execute_editor_apply_scene_patch(args)
+	else:
+		ok = false
+		error_message = "Unknown editor tool: %s" % tool_name
+
+	if typeof(result) == TYPE_DICTIONARY and bool((result as Dictionary).get("ok", true)) == false:
+		ok = false
+		error_message = str((result as Dictionary).get("error", "Editor tool failed"))
+
+	_send_request(
+		"editor.tool.result",
+		{
+			"callId": call_id,
+			"ok": ok,
+			"result": result if ok else null,
+			"error": error_message if not ok else ""
+		},
+		"editor-tool-result"
+	)
+
+
+func _execute_editor_inspect_node(args: Dictionary) -> Dictionary:
+	var scene_path: String = str(args.get("scenePath", ""))
+	var node_path: String = str(args.get("nodePath", "."))
+	var target_node: Node = _find_editor_node(scene_path, node_path)
+	var edited_root: Node = _get_edited_scene_root()
+	if target_node == null or edited_root == null:
+		return { "ok": false, "error": "editor_node_not_found" }
+
+	return {
+		"ok": true,
+		"node": _serialize_editor_node_deep(target_node, edited_root)
+	}
+
+
+func _execute_editor_apply_scene_patch(args: Dictionary) -> Dictionary:
+	if editor_undo_redo == null:
+		return { "ok": false, "error": "editor_undo_redo_unavailable" }
+
+	var edited_root: Node = _get_edited_scene_root()
+	if edited_root == null:
+		return { "ok": false, "error": "editor_scene_unavailable" }
+
+	var scene_path: String = str(args.get("scenePath", ""))
+	if not scene_path.strip_edges().is_empty() and scene_path != _get_scene_resource_path(edited_root):
+		return { "ok": false, "error": "editor_scene_mismatch" }
+
+	var operations_value: Variant = args.get("operations", [])
+	if typeof(operations_value) != TYPE_ARRAY:
+		return { "ok": false, "error": "invalid_operations" }
+
+	var operations: Array = operations_value as Array
+	if operations.is_empty():
+		return { "ok": false, "error": "empty_operations" }
+
+	var action_title: String = str(args.get("title", "Scene patch")).strip_edges()
+	if action_title.is_empty():
+		action_title = "Scene patch"
+	if not action_title.begins_with("Daedalus:"):
+		action_title = "Daedalus: %s" % action_title
+
+	var created_nodes: Array[Node] = []
+	for operation_value: Variant in operations:
+		if typeof(operation_value) != TYPE_DICTIONARY:
+			return { "ok": false, "error": "invalid_operation" }
+
+		var operation: Dictionary = operation_value as Dictionary
+		var operation_error: String = _validate_editor_patch_operation(operation)
+		if not operation_error.is_empty():
+			return { "ok": false, "error": operation_error }
+
+	editor_undo_redo.create_action(action_title)
+	for operation_value: Variant in operations:
+		var operation: Dictionary = operation_value as Dictionary
+		var operation_error: String = _add_editor_patch_operation(operation, edited_root, created_nodes)
+		if not operation_error.is_empty():
+			return { "ok": false, "error": operation_error }
+
+	editor_undo_redo.commit_action()
+
+	var should_save: bool = bool(args.get("saveAfter", true))
+	var save_error: Error = OK
+	if should_save:
+		save_error = _save_current_editor_scene()
+
+	return {
+		"ok": save_error == OK,
+		"operations": operations.size(),
+		"createdNodes": created_nodes.size(),
+		"saved": should_save and save_error == OK,
+		"error": "" if save_error == OK else "editor_save_failed:%d" % int(save_error)
+	}
+
+
+func _add_editor_patch_operation(operation: Dictionary, edited_root: Node, created_nodes: Array[Node]) -> String:
+	var operation_type: String = str(operation.get("type", ""))
+	if operation_type == "set_property":
+		return _add_editor_set_property_operation(operation, edited_root)
+	if operation_type == "add_node":
+		return _add_editor_add_node_operation(operation, edited_root, created_nodes)
+	if operation_type == "rename_node":
+		return _add_editor_rename_node_operation(operation, edited_root)
+	if operation_type == "attach_script":
+		return _add_editor_attach_script_operation(operation, edited_root)
+	if operation_type == "connect_signal":
+		return _add_editor_connect_signal_operation(operation, edited_root)
+	return "unsupported_operation:%s" % operation_type
+
+
+func _validate_editor_patch_operation(operation: Dictionary) -> String:
+	var operation_type: String = str(operation.get("type", ""))
+	if operation_type == "set_property":
+		var target_node: Node = _find_editor_node("", str(operation.get("nodePath", ".")))
+		var property_name: String = str(operation.get("property", ""))
+		if target_node == null:
+			return "node_not_found"
+		if property_name.is_empty() or not _node_has_property(target_node, property_name):
+			return "property_not_found:%s" % property_name
+		return ""
+	if operation_type == "add_node":
+		var parent_node: Node = _find_editor_node("", str(operation.get("parentPath", ".")))
+		var node_type: String = str(operation.get("nodeType", "Node"))
+		if parent_node == null:
+			return "parent_not_found"
+		if not ClassDB.class_exists(node_type):
+			return "class_not_found:%s" % node_type
+		var created_node_value: Variant = ClassDB.instantiate(node_type)
+		if not (created_node_value is Node):
+			return "class_is_not_node:%s" % node_type
+		var validation_node: Node = created_node_value as Node
+		validation_node.free()
+		return ""
+	if operation_type == "rename_node":
+		var rename_node: Node = _find_editor_node("", str(operation.get("nodePath", ".")))
+		var node_name: String = str(operation.get("name", "")).strip_edges()
+		if rename_node == null:
+			return "node_not_found"
+		if node_name.is_empty():
+			return "empty_node_name"
+		return ""
+	if operation_type == "attach_script":
+		var script_node: Node = _find_editor_node("", str(operation.get("nodePath", ".")))
+		var script_path: String = str(operation.get("scriptPath", "")).strip_edges()
+		if script_node == null:
+			return "node_not_found"
+		if script_path.is_empty():
+			return "empty_script_path"
+		var script_resource: Resource = load(script_path)
+		if not (script_resource is Script):
+			return "script_not_found:%s" % script_path
+		return ""
+	if operation_type == "connect_signal":
+		var source_node: Node = _find_editor_node("", str(operation.get("fromNode", ".")))
+		var target_node: Node = _find_editor_node("", str(operation.get("toNode", ".")))
+		var signal_name: String = str(operation.get("signal", "")).strip_edges()
+		var method_name: String = str(operation.get("method", "")).strip_edges()
+		if source_node == null or target_node == null:
+			return "signal_node_not_found"
+		if signal_name.is_empty() or method_name.is_empty():
+			return "invalid_signal_or_method"
+		return ""
+	return "unsupported_operation:%s" % operation_type
+
+
+func _add_editor_set_property_operation(operation: Dictionary, edited_root: Node) -> String:
+	var target_node: Node = _find_editor_node("", str(operation.get("nodePath", ".")))
+	var property_name: String = str(operation.get("property", ""))
+	if target_node == null:
+		return "node_not_found"
+	if property_name.is_empty() or not _node_has_property(target_node, property_name):
+		return "property_not_found:%s" % property_name
+
+	var old_value: Variant = target_node.get(property_name)
+	var new_value: Variant = _coerce_property_value(operation.get("value", null), old_value)
+	editor_undo_redo.add_do_property(target_node, property_name, new_value)
+	editor_undo_redo.add_undo_property(target_node, property_name, old_value)
+	return ""
+
+
+func _add_editor_add_node_operation(operation: Dictionary, edited_root: Node, created_nodes: Array[Node]) -> String:
+	var parent_node: Node = _find_editor_node("", str(operation.get("parentPath", ".")))
+	var node_type: String = str(operation.get("nodeType", "Node"))
+	var node_name: String = str(operation.get("nodeName", node_type))
+	if parent_node == null:
+		return "parent_not_found"
+	if not ClassDB.class_exists(node_type):
+		return "class_not_found:%s" % node_type
+
+	var created_node_value: Variant = ClassDB.instantiate(node_type)
+	if not (created_node_value is Node):
+		return "class_is_not_node:%s" % node_type
+
+	var created_node: Node = created_node_value as Node
+	created_node.name = node_name
+	var properties_value: Variant = operation.get("properties", {})
+	if typeof(properties_value) == TYPE_DICTIONARY:
+		var properties: Dictionary = properties_value as Dictionary
+		for property_key: Variant in properties.keys():
+			var property_name: String = str(property_key)
+			if _node_has_property(created_node, property_name):
+				var old_value: Variant = created_node.get(property_name)
+				created_node.set(property_name, _coerce_property_value(properties[property_key], old_value))
+
+	editor_undo_redo.add_do_method(parent_node, "add_child", created_node)
+	editor_undo_redo.add_do_property(created_node, "owner", edited_root)
+	editor_undo_redo.add_undo_method(parent_node, "remove_child", created_node)
+	editor_undo_redo.add_do_reference(created_node)
+	created_nodes.append(created_node)
+	return ""
+
+
+func _add_editor_rename_node_operation(operation: Dictionary, _edited_root: Node) -> String:
+	var target_node: Node = _find_editor_node("", str(operation.get("nodePath", ".")))
+	var node_name: String = str(operation.get("name", "")).strip_edges()
+	if target_node == null:
+		return "node_not_found"
+	if node_name.is_empty():
+		return "empty_node_name"
+
+	var old_name: String = target_node.name
+	editor_undo_redo.add_do_property(target_node, "name", node_name)
+	editor_undo_redo.add_undo_property(target_node, "name", old_name)
+	return ""
+
+
+func _add_editor_attach_script_operation(operation: Dictionary, _edited_root: Node) -> String:
+	var target_node: Node = _find_editor_node("", str(operation.get("nodePath", ".")))
+	var script_path: String = str(operation.get("scriptPath", "")).strip_edges()
+	if target_node == null:
+		return "node_not_found"
+	if script_path.is_empty():
+		return "empty_script_path"
+
+	var script_resource: Resource = load(script_path)
+	if not (script_resource is Script):
+		return "script_not_found:%s" % script_path
+
+	var old_script: Variant = target_node.get_script()
+	editor_undo_redo.add_do_method(target_node, "set_script", script_resource)
+	editor_undo_redo.add_undo_method(target_node, "set_script", old_script)
+	return ""
+
+
+func _add_editor_connect_signal_operation(operation: Dictionary, _edited_root: Node) -> String:
+	var source_node: Node = _find_editor_node("", str(operation.get("fromNode", ".")))
+	var target_node: Node = _find_editor_node("", str(operation.get("toNode", ".")))
+	var signal_name: String = str(operation.get("signal", "")).strip_edges()
+	var method_name: String = str(operation.get("method", "")).strip_edges()
+	if source_node == null or target_node == null:
+		return "signal_node_not_found"
+	if signal_name.is_empty() or method_name.is_empty():
+		return "invalid_signal_or_method"
+
+	var callable: Callable = Callable(target_node, method_name)
+	if source_node.is_connected(signal_name, callable):
+		return ""
+
+	editor_undo_redo.add_do_method(source_node, "connect", signal_name, callable)
+	editor_undo_redo.add_undo_method(source_node, "disconnect", signal_name, callable)
+	return ""
+
+
+func _coerce_property_value(value: Variant, old_value: Variant) -> Variant:
+	if old_value is Vector2 and typeof(value) == TYPE_DICTIONARY:
+		var vector_dictionary: Dictionary = value as Dictionary
+		return Vector2(float(vector_dictionary.get("x", 0.0)), float(vector_dictionary.get("y", 0.0)))
+	if old_value is Vector2i and typeof(value) == TYPE_DICTIONARY:
+		var vector_i_dictionary: Dictionary = value as Dictionary
+		return Vector2i(int(vector_i_dictionary.get("x", 0)), int(vector_i_dictionary.get("y", 0)))
+	if old_value is Color and typeof(value) == TYPE_STRING:
+		return Color(str(value))
+	return value
+
+
+func _save_current_editor_scene() -> Error:
+	if editor_interface == null:
+		return ERR_UNCONFIGURED
+	if not editor_interface.has_method("save_scene"):
+		return OK
+
+	var result: Variant = editor_interface.call("save_scene")
+	if typeof(result) == TYPE_INT:
+		return result as Error
+	return OK
 
 
 func _get_selected_model_id() -> String:
@@ -688,6 +1613,7 @@ func _show_background_context_viewer() -> void:
 
 func _on_create_new_session_button_pressed() -> void:
 	_clear_message_queue()
+	_clear_manual_guides()
 	_create_session("New session " + Time.get_datetime_string_from_system(false, true))
 
 
@@ -722,16 +1648,20 @@ func _on_send_button_pressed() -> void:
 		_process_message_queue()
 		return
 
+	var additional_context_snapshot: Array[Dictionary] = _get_additional_context_snapshot()
 	if _should_queue_outgoing_message():
-		if _enqueue_message(message_text):
+		if _enqueue_message(message_text, additional_context_snapshot):
 			text_edit.clear()
+			_clear_unpinned_additional_context_items()
 			_update_send_state()
 			_process_message_queue()
 		return
 
-	if _dispatch_message_text(message_text) and active_session_id.is_empty():
-		text_edit.clear()
-		_update_send_state()
+	if _dispatch_message_text(message_text, additional_context_snapshot):
+		_clear_unpinned_additional_context_items()
+		if active_session_id.is_empty():
+			text_edit.clear()
+			_update_send_state()
 
 
 func _on_user_message_resend_requested(request_id_to_retry: String, message_text: String) -> void:
@@ -861,22 +1791,24 @@ func _open_session(session_id: String) -> void:
 
 	if session_id != active_session_id:
 		_clear_message_queue()
+		_clear_manual_guides()
 	_send_request("session.open", { "sessionId": session_id, "limit": SESSION_OPEN_MESSAGE_LIMIT }, "session-open")
 
 
-func _dispatch_message_text(message_text: String) -> bool:
+func _dispatch_message_text(message_text: String, additional_contexts: Array = []) -> bool:
 	if not _is_socket_open():
 		return false
 
 	if active_session_id.is_empty():
 		pending_chat_text = message_text
+		pending_chat_additional_context = _clone_additional_context_array(additional_contexts)
 		_create_session(_make_session_title(message_text))
 		return true
 
-	return _send_chat_text(message_text)
+	return _send_chat_text(message_text, "", additional_contexts)
 
 
-func _send_chat_text(message_text: String, retry_from_request_id: String = "") -> bool:
+func _send_chat_text(message_text: String, retry_from_request_id: String = "", additional_contexts: Array = []) -> bool:
 	if not _is_socket_open():
 		return false
 
@@ -892,8 +1824,18 @@ func _send_chat_text(message_text: String, retry_from_request_id: String = "") -
 	active_stream_id = "daedalus-chat-%d" % request_id
 	active_stream_request_id = active_stream_id
 	active_stream_started_at_utc = _get_utc_timestamp()
+	var additional_context_snapshot: Array[Dictionary] = _clone_additional_context_array(additional_contexts)
 	var should_follow_bottom: bool = _should_follow_timeline_updates()
-	_append_timeline_entry("user", active_stream_request_id, message_text, "", { "sent_at_utc": active_stream_started_at_utc })
+	_append_timeline_entry(
+		"user",
+		active_stream_request_id,
+		message_text,
+		"",
+		{
+			"sent_at_utc": active_stream_started_at_utc,
+			"additional_context": additional_context_snapshot
+		}
+	)
 	_schedule_timeline_render(should_follow_bottom)
 
 	var chat_params: Dictionary[String, Variant] = {
@@ -909,6 +1851,8 @@ func _send_chat_text(message_text: String, retry_from_request_id: String = "") -
 		chat_params["systemPrompt"] = custom_instructions
 	if not retry_from_request_id.is_empty():
 		chat_params["retryFromRequestId"] = retry_from_request_id
+	if not additional_context_snapshot.is_empty():
+		chat_params["additionalContext"] = additional_context_snapshot
 
 	var payload: Dictionary[String, Variant] = {
 		"type": "request",
@@ -943,7 +1887,7 @@ func _should_queue_outgoing_message() -> bool:
 	)
 
 
-func _enqueue_message(message_text: String) -> bool:
+func _enqueue_message(message_text: String, additional_contexts: Array = []) -> bool:
 	if _get_open_queue_count() >= MAX_QUEUED_MESSAGES:
 		_upsert_connection_status_entry(
 			"warning",
@@ -956,6 +1900,7 @@ func _enqueue_message(message_text: String) -> bool:
 	var queued_message: Dictionary = {
 		"id": message_queue_next_id,
 		"text": message_text,
+		"additional_context": _clone_additional_context_array(additional_contexts),
 		"status": MESSAGE_QUEUE_STATUS_PENDING,
 		"created_at_utc": _get_utc_timestamp()
 	}
@@ -983,7 +1928,8 @@ func _process_message_queue() -> void:
 	_render_message_panel()
 
 	var queued_text: String = str(queued_message.get("text", ""))
-	if not _dispatch_message_text(queued_text):
+	var queued_contexts: Array = queued_message.get("additional_context", []) as Array
+	if not _dispatch_message_text(queued_text, queued_contexts):
 		_finish_active_queue_message(false, MESSAGE_QUEUE_STATUS_FAILED)
 		_process_message_queue()
 
@@ -1058,6 +2004,219 @@ func _clear_message_queue() -> void:
 	active_queue_message_id = 0
 	_render_message_panel()
 	_update_send_state()
+
+
+func _handle_queue_tree_action(button_id: int, metadata: Dictionary) -> void:
+	var queue_message_id: int = int(metadata.get("id", 0))
+	var queue_status: String = str(metadata.get("status", ""))
+	var queue_message_text: String = str(metadata.get("message", ""))
+	if queue_message_id <= 0:
+		return
+
+	if button_id == MESSAGE_TREE_BUTTON_EDIT:
+		if not _can_edit_queue_message(queue_status):
+			return
+		text_edit.text = queue_message_text
+		text_edit.grab_focus()
+		_remove_queue_message(queue_message_id)
+	elif button_id == MESSAGE_TREE_BUTTON_DELETE:
+		if not _can_delete_queue_message(queue_status):
+			return
+		_remove_queue_message(queue_message_id)
+
+	_render_message_panel()
+	_update_send_state()
+
+
+func _handle_guide_tree_action(button_id: int, metadata: Dictionary) -> void:
+	var local_id: String = str(metadata.get("local_id", ""))
+	if local_id.is_empty():
+		return
+
+	if button_id == MESSAGE_TREE_BUTTON_GUIDE_NOW:
+		_submit_manual_guide(local_id)
+	elif button_id == MESSAGE_TREE_BUTTON_EDIT:
+		_edit_manual_guide(local_id)
+	elif button_id == MESSAGE_TREE_BUTTON_DELETE:
+		_delete_manual_guide(local_id)
+
+
+func _create_or_update_manual_guide_from_text_edit() -> void:
+	var guide_text: String = text_edit.text.strip_edges()
+	if guide_text.is_empty():
+		return
+
+	if not editing_guide_local_id.is_empty():
+		if _update_editing_manual_guide(guide_text):
+			text_edit.clear()
+			editing_guide_local_id = ""
+			_update_send_state()
+		return
+
+	manual_guide_next_id += 1
+	var local_id: String = "local-guide-%d" % manual_guide_next_id
+	var manual_guide: Dictionary = {
+		"local_id": local_id,
+		"guide_id": "",
+		"client_guide_id": local_id,
+		"text": guide_text,
+		"status": GUIDE_STATUS_DRAFT,
+		"created_at_utc": _get_utc_timestamp(),
+		"updated_at_utc": _get_utc_timestamp(),
+		"anchor_request_id": active_stream_request_id
+	}
+	manual_guides.append(manual_guide)
+	text_edit.clear()
+	_show_background_context_viewer()
+	_render_message_panel()
+	_update_send_state()
+
+
+func _update_editing_manual_guide(guide_text: String) -> bool:
+	var guide_index: int = _find_manual_guide_index(editing_guide_local_id)
+	if guide_index < 0:
+		return false
+
+	var manual_guide: Dictionary = manual_guides[guide_index]
+	var guide_status: String = str(manual_guide.get("status", GUIDE_STATUS_DRAFT))
+	manual_guide["text"] = guide_text
+	manual_guide["updated_at_utc"] = _get_utc_timestamp()
+
+	if guide_status == str(GUIDE_STATUS_PENDING):
+		var guide_id: String = str(manual_guide.get("guide_id", ""))
+		if guide_id.is_empty() or not _is_socket_open():
+			manual_guide["status"] = GUIDE_STATUS_FAILED
+		else:
+			var params: Dictionary[String, Variant] = {
+				"guideId": guide_id,
+				"text": guide_text
+			}
+			var update_request_id: String = _send_request("session.guide.update", params, "guide-update")
+			manual_guide["pending_request_id"] = update_request_id
+			manual_guide["status"] = GUIDE_STATUS_PENDING
+	else:
+		manual_guide["status"] = GUIDE_STATUS_DRAFT
+
+	manual_guides[guide_index] = manual_guide
+	_render_message_panel()
+	return true
+
+
+func _submit_manual_guide(local_id: String) -> void:
+	var guide_index: int = _find_manual_guide_index(local_id)
+	if guide_index < 0:
+		return
+
+	if active_session_id.is_empty():
+		_upsert_connection_status_entry("warning", "无法引导", "当前没有打开的会话。请先发送一条消息或打开一个会话。")
+		return
+	if not _is_socket_open():
+		_upsert_connection_status_entry("warning", "无法引导", "后端未连接，引导会先保留在本地。")
+		return
+
+	var manual_guide: Dictionary = manual_guides[guide_index]
+	var guide_status: String = str(manual_guide.get("status", GUIDE_STATUS_DRAFT))
+	if not _can_submit_manual_guide(guide_status):
+		return
+
+	var guide_text: String = str(manual_guide.get("text", "")).strip_edges()
+	if guide_text.is_empty():
+		return
+
+	var params: Dictionary[String, Variant] = {
+		"clientGuideId": str(manual_guide.get("client_guide_id", local_id)),
+		"text": guide_text
+	}
+	var anchor_request_id: String = str(manual_guide.get("anchor_request_id", ""))
+	if not anchor_request_id.is_empty():
+		params["anchorRequestId"] = anchor_request_id
+
+	var add_request_id: String = _send_request("session.guide.add", params, "guide-add")
+	if add_request_id.is_empty():
+		_upsert_connection_status_entry("warning", "无法引导", "引导提交失败，后端连接不可用。")
+		return
+
+	manual_guide["status"] = GUIDE_STATUS_SUBMITTING
+	manual_guide["pending_request_id"] = add_request_id
+	manual_guides[guide_index] = manual_guide
+	_render_message_panel()
+
+
+func _edit_manual_guide(local_id: String) -> void:
+	var guide_index: int = _find_manual_guide_index(local_id)
+	if guide_index < 0:
+		return
+
+	var manual_guide: Dictionary = manual_guides[guide_index]
+	var guide_status: String = str(manual_guide.get("status", GUIDE_STATUS_DRAFT))
+	if not _can_edit_manual_guide(guide_status):
+		return
+
+	text_edit.text = str(manual_guide.get("text", ""))
+	text_edit.grab_focus()
+	if guide_status == str(GUIDE_STATUS_PENDING):
+		editing_guide_local_id = local_id
+	elif guide_status == str(GUIDE_STATUS_DRAFT) or guide_status == str(GUIDE_STATUS_FAILED):
+		manual_guides.remove_at(guide_index)
+		editing_guide_local_id = ""
+	else:
+		editing_guide_local_id = ""
+	_render_message_panel()
+	_update_send_state()
+
+
+func _delete_manual_guide(local_id: String) -> void:
+	var guide_index: int = _find_manual_guide_index(local_id)
+	if guide_index < 0:
+		return
+
+	var manual_guide: Dictionary = manual_guides[guide_index]
+	var guide_status: String = str(manual_guide.get("status", GUIDE_STATUS_DRAFT))
+	if not _can_delete_manual_guide(guide_status):
+		return
+
+	if guide_status == str(GUIDE_STATUS_PENDING):
+		var guide_id: String = str(manual_guide.get("guide_id", ""))
+		if not guide_id.is_empty() and _is_socket_open():
+			var delete_request_id: String = _send_request("session.guide.delete", { "guideId": guide_id }, "guide-delete")
+			manual_guide["status"] = GUIDE_STATUS_DELETING
+			manual_guide["pending_request_id"] = delete_request_id
+			manual_guides[guide_index] = manual_guide
+		else:
+			manual_guides.remove_at(guide_index)
+	else:
+		manual_guides.remove_at(guide_index)
+
+	if editing_guide_local_id == local_id:
+		editing_guide_local_id = ""
+	_render_message_panel()
+	_update_send_state()
+
+
+func _find_manual_guide_index(local_id: String) -> int:
+	for index: int in range(manual_guides.size()):
+		var manual_guide: Dictionary = manual_guides[index]
+		if str(manual_guide.get("local_id", "")) == local_id:
+			return index
+
+	return -1
+
+
+func _find_manual_guide_index_by_backend_id(guide_id: String, client_guide_id: String = "") -> int:
+	for index: int in range(manual_guides.size()):
+		var manual_guide: Dictionary = manual_guides[index]
+		if not guide_id.is_empty() and str(manual_guide.get("guide_id", "")) == guide_id:
+			return index
+		if not client_guide_id.is_empty() and str(manual_guide.get("client_guide_id", "")) == client_guide_id:
+			return index
+
+	return -1
+
+
+func _clear_manual_guides() -> void:
+	manual_guides.clear()
+	editing_guide_local_id = ""
+	_render_message_panel()
 
 
 func _make_session_title(message_text: String) -> String:
@@ -1139,6 +2298,12 @@ func _handle_message(message: Dictionary) -> void:
 func _handle_response(message: Dictionary) -> void:
 	var ok: bool = bool(message.get("ok", false))
 	if not ok:
+		if str(message.get("id", "")).begins_with("next-step-hints"):
+			next_step_hint_request_id = ""
+			next_step_hint_anchor_request_id = ""
+			return
+		if _handle_guide_response_error(message):
+			return
 		if str(message.get("id", "")).begins_with("context-popup-info"):
 			context_popup_open_after_info = false
 		if str(message.get("id", "")).begins_with("session-timeline"):
@@ -1177,7 +2342,13 @@ func _handle_response(message: Dictionary) -> void:
 		return
 
 	var result_dictionary: Dictionary = result as Dictionary
-	if result_dictionary.has("archivedSessions"):
+	if bool(result_dictionary.get("nextStepHints", false)):
+		_apply_next_step_hints_response(str(message.get("id", "")), result_dictionary)
+	elif bool(result_dictionary.get("guideAdded", false)) or bool(result_dictionary.get("guideUpdated", false)):
+		_apply_guide_upsert_response(result_dictionary)
+	elif bool(result_dictionary.get("guideDeleted", false)):
+		_apply_guide_delete_response(result_dictionary)
+	elif result_dictionary.has("archivedSessions"):
 		_update_archived_session_list(result_dictionary)
 	elif result_dictionary.has("workspaces"):
 		_update_workspace_list(result_dictionary)
@@ -1193,8 +2364,10 @@ func _handle_response(message: Dictionary) -> void:
 
 		if not pending_chat_text.is_empty():
 			var next_message: String = pending_chat_text
+			var next_additional_context: Array[Dictionary] = _clone_additional_context_array(pending_chat_additional_context)
 			pending_chat_text = ""
-			if not _send_chat_text(next_message) and active_queue_message_id > 0:
+			pending_chat_additional_context.clear()
+			if not _send_chat_text(next_message, "", next_additional_context) and active_queue_message_id > 0:
 				_finish_active_queue_message(false, MESSAGE_QUEUE_STATUS_FAILED)
 				_process_message_queue()
 	elif bool(result_dictionary.get("opened", false)) and str(message.get("id", "")).begins_with("session-recover-open"):
@@ -1206,6 +2379,7 @@ func _handle_response(message: Dictionary) -> void:
 		_clear_chat_items()
 		_show_background_context_viewer()
 		_render_session_timeline(result_dictionary.get("messages", []), result_dictionary.get("events", []), result_dictionary)
+		_sync_pending_guides_from_result(result_dictionary)
 		_apply_latest_workflow_snapshot(result_dictionary)
 		_send_request("workspace.list", {}, "workspace-list")
 		_send_request("session.info", {}, "session-info")
@@ -1275,6 +2449,7 @@ func _handle_event(message: Dictionary) -> void:
 	elif event_name == "ai.done":
 		var should_follow_bottom: bool = _should_follow_timeline_updates()
 		var completed_at_utc: String = _get_utc_timestamp()
+		var completed_request_id: String = active_stream_request_id
 		_flush_pending_assistant_delta()
 		if not active_assistant_entry_id.is_empty():
 			_set_timeline_entry_times(active_assistant_entry_id, active_stream_started_at_utc, completed_at_utc)
@@ -1291,9 +2466,12 @@ func _handle_event(message: Dictionary) -> void:
 		_send_request("session.save", {}, "session-save")
 		_send_request("session.info", {}, "session-info")
 		_finish_active_queue_message(true)
+		if not _has_pending_queued_messages():
+			_request_next_step_hints(completed_request_id, "done")
 		_process_message_queue()
 	elif event_name == "ai.paused":
 		var should_follow_bottom: bool = _should_follow_timeline_updates()
+		var paused_request_id: String = active_stream_request_id
 		_flush_pending_assistant_delta()
 		if active_assistant_item != null:
 			active_assistant_item.call("finish_message")
@@ -1309,6 +2487,7 @@ func _handle_event(message: Dictionary) -> void:
 			if active_queue_message_id > 0:
 				_set_queue_message_status(active_queue_message_id, MESSAGE_QUEUE_STATUS_APPROVAL)
 			_show_approval_dialog(data_dictionary)
+		_request_next_step_hints(paused_request_id, "paused")
 	elif event_name == "ai.cancelled":
 		_stop_active_stream_locally(false)
 	elif event_name == "ai.thinking.delta":
@@ -1346,10 +2525,225 @@ func _handle_event(message: Dictionary) -> void:
 		active_workflow_id = str(data_dictionary.get("workflowId", ""))
 	elif event_name == "workflow.todo.updated":
 		_apply_workflow_todo_snapshot(data_dictionary)
+	elif event_name == "guide.applied":
+		_apply_guide_applied_event(data_dictionary)
+	elif event_name == "guide.deleted":
+		_apply_guide_deleted_event(data_dictionary)
+	elif event_name == "editor.tool.requested":
+		_handle_editor_tool_requested(data_dictionary)
 
 
 func _is_global_event(event_name: String) -> bool:
-	return event_name == "tool.approved" or event_name == "tool.rejected" or event_name == "tool.approval_required" or event_name == "ai.paused" or event_name == "ai.cancelled" or event_name.begins_with("workflow.")
+	return event_name == "tool.approved" or event_name == "tool.rejected" or event_name == "tool.approval_required" or event_name == "ai.paused" or event_name == "ai.cancelled" or event_name == "editor.tool.requested" or event_name.begins_with("workflow.") or event_name.begins_with("guide.")
+
+
+func _request_next_step_hints(anchor_request_id: String, trigger: String) -> void:
+	if not next_step_hints_enabled:
+		return
+	if not _is_socket_open() or active_session_id.is_empty():
+		return
+	if not next_step_hint_request_id.is_empty():
+		return
+
+	var params: Dictionary[String, Variant] = {
+		"sessionId": active_session_id,
+		"trigger": trigger,
+		"maxHints": 3
+	}
+	if not anchor_request_id.is_empty():
+		params["anchorRequestId"] = anchor_request_id
+
+	next_step_hint_request_id = _send_request("ai.next_step_hints", params, "next-step-hints")
+	next_step_hint_anchor_request_id = anchor_request_id
+	if next_step_hint_request_id.is_empty():
+		next_step_hint_anchor_request_id = ""
+
+
+func _apply_next_step_hints_response(response_id: String, result_dictionary: Dictionary) -> void:
+	if response_id != next_step_hint_request_id:
+		return
+
+	next_step_hint_request_id = ""
+	next_step_hint_anchor_request_id = ""
+	_clear_next_step_hint_entries()
+
+	var hints_value: Variant = result_dictionary.get("hints", [])
+	if typeof(hints_value) != TYPE_ARRAY:
+		text_edit.placeholder_text = ""
+		return
+
+	var hints: Array = hints_value as Array
+	if hints.is_empty():
+		text_edit.placeholder_text = ""
+		return
+
+	for index: int in range(hints.size()):
+		var hint_value: Variant = hints[index]
+		if typeof(hint_value) != TYPE_DICTIONARY:
+			continue
+
+		var hint: Dictionary = hint_value as Dictionary
+		var hint_title: String = str(hint.get("title", "下一步")).strip_edges()
+		var hint_message: String = str(hint.get("message", "")).strip_edges()
+		if hint_message.is_empty():
+			continue
+
+		if index == 0:
+			text_edit.placeholder_text = hint_message
+			continue
+
+		var action_id: String = "%s%d-%d" % [NEXT_STEP_HINT_ACTION_PREFIX, Time.get_ticks_msec(), index]
+		next_step_hints_by_action_id[action_id] = hint_message
+		var entry_id: String = _append_timeline_entry(
+			"status",
+			"",
+			hint_message,
+			"next-step-hint-%d-%d" % [Time.get_ticks_msec(), index],
+			{
+				"status": "message",
+				"title": "下一步提示：%s" % hint_title,
+				"detail": hint_message,
+				"action_label": "Use",
+				"action_id": action_id
+			}
+		)
+		next_step_hint_entry_ids.append(entry_id)
+
+	_schedule_timeline_render(_should_follow_timeline_updates())
+
+
+func _clear_next_step_hint_entries() -> void:
+	text_edit.placeholder_text = ""
+	next_step_hints_by_action_id.clear()
+	for entry_id: String in next_step_hint_entry_ids:
+		var entry_index: int = _find_timeline_entry_index(entry_id)
+		if entry_index >= 0:
+			timeline_entries.remove_at(entry_index)
+		var rendered_node_value: Variant = rendered_entry_nodes.get(entry_id, null)
+		if rendered_node_value is Node:
+			(rendered_node_value as Node).queue_free()
+		rendered_entry_nodes.erase(entry_id)
+		rendered_entry_indices.erase(entry_id)
+
+	next_step_hint_entry_ids.clear()
+	_rebuild_timeline_index_cache()
+	_rebuild_timeline_height_cache()
+	_schedule_timeline_render(_should_follow_timeline_updates())
+
+
+func _handle_guide_response_error(message: Dictionary) -> bool:
+	var response_id: String = str(message.get("id", ""))
+	if not (response_id.begins_with("guide-add") or response_id.begins_with("guide-update") or response_id.begins_with("guide-delete")):
+		return false
+
+	for index: int in range(manual_guides.size()):
+		var manual_guide: Dictionary = manual_guides[index]
+		if str(manual_guide.get("pending_request_id", "")) != response_id:
+			continue
+
+		if response_id.begins_with("guide-delete"):
+			manual_guide["status"] = GUIDE_STATUS_PENDING
+		else:
+			manual_guide["status"] = GUIDE_STATUS_FAILED
+		manual_guide["pending_request_id"] = ""
+		manual_guides[index] = manual_guide
+		break
+
+	_render_message_panel()
+	_show_response_error(message)
+	return true
+
+
+func _apply_guide_upsert_response(result_dictionary: Dictionary) -> void:
+	var guide_value: Variant = result_dictionary.get("guide", {})
+	if typeof(guide_value) != TYPE_DICTIONARY:
+		return
+
+	var guide_dictionary: Dictionary = guide_value as Dictionary
+	var guide_id: String = str(guide_dictionary.get("guideId", ""))
+	var client_guide_id: String = str(guide_dictionary.get("clientGuideId", ""))
+	var guide_index: int = _find_manual_guide_index_by_backend_id(guide_id, client_guide_id)
+	var manual_guide: Dictionary
+	if guide_index >= 0:
+		manual_guide = manual_guides[guide_index]
+	else:
+		manual_guide_next_id += 1
+		manual_guide = {
+			"local_id": "remote-guide-%d" % manual_guide_next_id,
+			"client_guide_id": client_guide_id
+		}
+		manual_guides.append(manual_guide)
+		guide_index = manual_guides.size() - 1
+
+	manual_guide["guide_id"] = guide_id
+	manual_guide["client_guide_id"] = client_guide_id
+	manual_guide["text"] = str(guide_dictionary.get("text", manual_guide.get("text", "")))
+	manual_guide["status"] = GUIDE_STATUS_PENDING
+	manual_guide["pending_request_id"] = ""
+	manual_guide["updated_at_utc"] = str(guide_dictionary.get("updatedAt", _get_utc_timestamp()))
+	manual_guide["anchor_request_id"] = _string_or_empty(guide_dictionary.get("anchorRequestId", ""))
+	manual_guides[guide_index] = manual_guide
+	_render_message_panel()
+
+
+func _apply_guide_delete_response(result_dictionary: Dictionary) -> void:
+	var guide_id: String = str(result_dictionary.get("guideId", ""))
+	var guide_index: int = _find_manual_guide_index_by_backend_id(guide_id)
+	if guide_index >= 0:
+		manual_guides.remove_at(guide_index)
+	_render_message_panel()
+
+
+func _apply_guide_applied_event(data_dictionary: Dictionary) -> void:
+	var guide_id: String = str(data_dictionary.get("guideId", ""))
+	var client_guide_id: String = str(data_dictionary.get("clientGuideId", ""))
+	var guide_index: int = _find_manual_guide_index_by_backend_id(guide_id, client_guide_id)
+	if guide_index < 0:
+		return
+
+	var manual_guide: Dictionary = manual_guides[guide_index]
+	manual_guide["status"] = GUIDE_STATUS_APPLIED
+	manual_guide["pending_request_id"] = ""
+	manual_guides[guide_index] = manual_guide
+	_render_message_panel()
+
+
+func _apply_guide_deleted_event(data_dictionary: Dictionary) -> void:
+	var guide_id: String = str(data_dictionary.get("guideId", ""))
+	var client_guide_id: String = str(data_dictionary.get("clientGuideId", ""))
+	var guide_index: int = _find_manual_guide_index_by_backend_id(guide_id, client_guide_id)
+	if guide_index >= 0:
+		manual_guides.remove_at(guide_index)
+	_render_message_panel()
+
+
+func _sync_pending_guides_from_result(result_dictionary: Dictionary) -> void:
+	var pending_guides_value: Variant = result_dictionary.get("pendingGuides", [])
+	if typeof(pending_guides_value) != TYPE_ARRAY:
+		return
+
+	manual_guides.clear()
+	editing_guide_local_id = ""
+	var pending_guides: Array = pending_guides_value as Array
+	for guide_value: Variant in pending_guides:
+		if typeof(guide_value) != TYPE_DICTIONARY:
+			continue
+
+		var guide_dictionary: Dictionary = guide_value as Dictionary
+		manual_guide_next_id += 1
+		manual_guides.append({
+			"local_id": "remote-guide-%d" % manual_guide_next_id,
+			"guide_id": str(guide_dictionary.get("guideId", "")),
+			"client_guide_id": str(guide_dictionary.get("clientGuideId", "")),
+			"text": str(guide_dictionary.get("text", "")),
+			"status": GUIDE_STATUS_PENDING,
+			"pending_request_id": "",
+			"created_at_utc": str(guide_dictionary.get("createdAt", "")),
+			"updated_at_utc": str(guide_dictionary.get("updatedAt", "")),
+			"anchor_request_id": _string_or_empty(guide_dictionary.get("anchorRequestId", ""))
+		})
+
+	_render_message_panel()
 
 
 func _update_session_list(result: Dictionary) -> void:
@@ -1654,6 +3048,11 @@ func _clear_chat_items() -> void:
 	pending_assistant_delta_flush_at_msec = 0
 	pending_thinking_delta_flush_at_msec = 0
 	timeline_measure_after_msec = 0
+	next_step_hint_request_id = ""
+	next_step_hint_anchor_request_id = ""
+	next_step_hint_entry_ids.clear()
+	next_step_hints_by_action_id.clear()
+	text_edit.placeholder_text = ""
 	timeline_entries.clear()
 	timeline_heights.clear()
 	timeline_prefix_heights.clear()
@@ -1787,7 +3186,18 @@ func _append_session_records_to_timeline(messages_value: Variant, events_value: 
 		var created_at: String = str(message.get("createdAt", ""))
 
 		if role == "user":
-			_append_timeline_entry("user", request_id, content, _make_message_entry_id(message, role), { "sent_at_utc": created_at })
+			var additional_contexts_value: Variant = message.get("additionalContext", [])
+			var additional_contexts: Array = additional_contexts_value as Array if typeof(additional_contexts_value) == TYPE_ARRAY else []
+			_append_timeline_entry(
+				"user",
+				request_id,
+				content,
+				_make_message_entry_id(message, role),
+				{
+					"sent_at_utc": created_at,
+					"additional_context": _clone_additional_context_array(additional_contexts)
+				}
+			)
 			if not request_id.is_empty() and not created_at.is_empty():
 				request_started_at_by_id[request_id] = created_at
 			if not request_id.is_empty() and not assistant_request_ids.has(request_id):
@@ -2514,7 +3924,7 @@ func _configure_timeline_entry_node(node: Node, entry: Dictionary, _index: int) 
 	var entry_type: String = str(entry.get("type", ""))
 
 	if entry_type == "user":
-		node.call("setup", str(entry.get("content", "")), str(entry.get("request_id", "")), str(entry.get("sent_at_utc", "")))
+		node.call("setup", str(entry.get("content", "")), str(entry.get("request_id", "")), str(entry.get("sent_at_utc", "")), entry.get("additional_context", []))
 		if node.has_signal("resend_requested"):
 			node.connect("resend_requested", Callable(self, "_on_user_message_resend_requested"))
 	elif entry_type == "assistant":
@@ -3426,7 +4836,8 @@ func _get_frontend_config_snapshot() -> Dictionary:
 		"backendUrl": backend_url,
 		"model": _get_selected_model_id(),
 		"approvalMode": _get_selected_approval_mode(),
-		"customInstructions": custom_instructions
+		"customInstructions": custom_instructions,
+		"nextStepHintsEnabled": next_step_hints_enabled
 	}
 
 
@@ -3511,14 +4922,19 @@ func _on_settings_provider_config_clear_requested() -> void:
 
 func _on_settings_frontend_config_save_requested(
 	next_backend_url: String,
-	next_custom_instructions: String
+	next_custom_instructions: String,
+	next_step_hints_enabled_value: bool
 ) -> void:
 	var normalized_backend_url: String = _normalize_backend_url(next_backend_url)
 	var backend_url_changed: bool = normalized_backend_url != backend_url
 	backend_url = normalized_backend_url
 	custom_instructions = next_custom_instructions.strip_edges()
+	next_step_hints_enabled = next_step_hints_enabled_value
 	_save_frontend_setting(CONFIG_BACKEND_URL_SETTING, backend_url)
 	_save_frontend_setting(CONFIG_CUSTOM_INSTRUCTIONS_SETTING, custom_instructions)
+	_save_frontend_setting(CONFIG_NEXT_STEP_HINTS_SETTING, next_step_hints_enabled)
+	if not next_step_hints_enabled:
+		_clear_next_step_hint_entries()
 
 	if backend_url_changed:
 		_restart_backend_connection()

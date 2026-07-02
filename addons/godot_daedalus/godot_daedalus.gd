@@ -13,6 +13,8 @@ func _enter_tree() -> void:
 	dock.dock_icon = DOCK_ICON
 	dock.default_slot = EditorDock.DOCK_SLOT_RIGHT_UL
 	var dock_content: Node = MAIN_SCENE.instantiate()
+	if dock_content.has_method("setup_editor_bridge"):
+		dock_content.call("setup_editor_bridge", self)
 	dock.add_child(dock_content)
 	add_dock(dock)
 

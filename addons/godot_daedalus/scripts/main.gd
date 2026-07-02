@@ -148,6 +148,7 @@ var sessions_by_id: Dictionary[String, Dictionary]
 var session_ids_in_order: Array[String]
 var archived_sessions_by_id: Dictionary[String, Dictionary]
 var archived_session_ids_in_order: Array[String]
+var custom_mcp_servers: Array[Dictionary] = []
 var workspaces_by_id: Dictionary[String, Dictionary]
 var selected_workspace_filter: String
 var session_search_text: String
@@ -181,6 +182,9 @@ var active_thinking_entry_id: String
 var active_tool_entry_ids_by_call_id: Dictionary[String, String]
 var active_stream_request_id: String
 var active_stream_started_at_utc: String
+var paused_stream_request_id: String
+var paused_stream_started_at_utc: String
+var paused_assistant_entry_id: String
 var active_workflow_id: String
 var pending_assistant_delta_text: String
 var pending_assistant_delta_queued: bool
@@ -1012,6 +1016,7 @@ func _on_socket_opened() -> void:
 		_save_provider_config_to_backend(deferred_api_key)
 	else:
 		_load_provider_config()
+	_load_mcp_config()
 	_apply_approval_mode_to_backend()
 	_refresh_session_and_archive_lists()
 	if not was_recovering or session_id_to_restore.is_empty():
@@ -1048,6 +1053,7 @@ func _handle_socket_closed_after_ready() -> void:
 	status_button.icon = DISCONNECTED_ICON
 	status_button.tooltip_text = "%s. Reconnecting..." % close_detail
 	_update_send_state()
+	_sync_settings_mcp_servers()
 	_begin_backend_recovery(close_detail, session_id_to_restore, was_streaming)
 
 
@@ -1098,6 +1104,10 @@ func _on_status_item_action_requested(action_id: String) -> void:
 
 func _load_provider_config() -> void:
 	_send_request("provider.config.get", {}, "provider-config-get")
+
+
+func _load_mcp_config() -> void:
+	_send_request("mcp.config.list", {}, "mcp-config-list")
 
 
 func _send_environment_config() -> void:
@@ -2046,6 +2056,7 @@ func _trim_timeline_from_request(request_id_to_retry: String) -> void:
 	active_thinking_entry_id = ""
 	active_assistant_text = ""
 	active_stream_started_at_utc = ""
+	_clear_paused_stream_context()
 	_rebuild_timeline_index_cache()
 	_rebuild_timeline_height_cache()
 	_clear_todo_items()
@@ -2079,11 +2090,47 @@ func _stop_active_stream_locally(prepare_continue: bool) -> void:
 	active_assistant_entry_id = ""
 	active_thinking_entry_id = ""
 	active_assistant_text = ""
+	_clear_paused_stream_context()
 	_set_streaming_state(false)
 
 	if prepare_continue and text_edit.text.strip_edges().is_empty():
 		text_edit.text = "继续"
 		text_edit.grab_focus()
+
+
+func _save_paused_stream_context() -> void:
+	paused_stream_request_id = active_stream_request_id
+	paused_stream_started_at_utc = active_stream_started_at_utc
+	paused_assistant_entry_id = active_assistant_entry_id
+
+
+func _clear_paused_stream_context() -> void:
+	paused_stream_request_id = ""
+	paused_stream_started_at_utc = ""
+	paused_assistant_entry_id = ""
+
+
+func _restore_paused_stream_context_for_continuation(continuation_request_id: String) -> void:
+	active_stream_request_id = paused_stream_request_id
+	if active_stream_request_id.is_empty():
+		active_stream_request_id = continuation_request_id
+
+	active_stream_started_at_utc = paused_stream_started_at_utc
+	if active_stream_started_at_utc.is_empty():
+		active_stream_started_at_utc = _get_utc_timestamp()
+
+	active_assistant_entry_id = paused_assistant_entry_id
+	if not active_assistant_entry_id.is_empty() and _find_timeline_entry_index(active_assistant_entry_id) < 0:
+		active_assistant_entry_id = ""
+
+	active_assistant_item = null
+	active_assistant_text = ""
+	if not active_assistant_entry_id.is_empty():
+		active_assistant_text = _get_timeline_entry_content(active_assistant_entry_id)
+		active_assistant_item = rendered_entry_nodes.get(active_assistant_entry_id, null) as Node
+		return
+
+	_ensure_active_assistant_item()
 
 
 func _on_approve_button_pressed() -> void:
@@ -2093,12 +2140,13 @@ func _on_approve_button_pressed() -> void:
 	if active_queue_message_id > 0:
 		_set_queue_message_status(active_queue_message_id, MESSAGE_QUEUE_STATUS_SENDING)
 	var should_follow_bottom: bool = _should_follow_timeline_updates()
-	active_stream_id = _send_request("approval.approve", { "approvalId": pending_approval_id }, "approval-approve")
-	active_stream_request_id = active_stream_id
-	active_stream_started_at_utc = _get_utc_timestamp()
-	active_assistant_item = null
-	active_assistant_entry_id = ""
-	active_assistant_text = ""
+	var continuation_request_id: String = _send_request("approval.approve", { "approvalId": pending_approval_id }, "approval-approve")
+	if continuation_request_id.is_empty():
+		_show_response_error({ "error": { "message": "发送审批通过请求失败。" } })
+		return
+
+	active_stream_id = continuation_request_id
+	_restore_paused_stream_context_for_continuation(continuation_request_id)
 	_set_streaming_state(true)
 	_scroll_to_bottom_if_following(should_follow_bottom)
 	approval_dialog.visible = false
@@ -2108,7 +2156,12 @@ func _on_reject_button_pressed() -> void:
 	if pending_approval_id.is_empty():
 		return
 
-	_send_request("approval.reject", { "approvalId": pending_approval_id }, "approval-reject")
+	var reject_request_id: String = _send_request("approval.reject", { "approvalId": pending_approval_id }, "approval-reject")
+	if reject_request_id.is_empty():
+		_show_response_error({ "error": { "message": "发送审批拒绝请求失败。" } })
+		return
+
+	_clear_paused_stream_context()
 	approval_dialog.visible = false
 
 
@@ -2160,6 +2213,7 @@ func _send_chat_text(message_text: String, retry_from_request_id: String = "", a
 	active_assistant_entry_id = ""
 	active_thinking_entry_id = ""
 	active_assistant_text = ""
+	_clear_paused_stream_context()
 	_clear_todo_items()
 
 	request_id += 1
@@ -2177,6 +2231,13 @@ func _send_chat_text(message_text: String, retry_from_request_id: String = "", a
 			"sent_at_utc": active_stream_started_at_utc,
 			"additional_context": additional_context_snapshot
 		}
+	)
+	active_assistant_entry_id = _append_timeline_entry(
+		"assistant",
+		active_stream_request_id,
+		"",
+		"",
+		{ "started_at_utc": active_stream_started_at_utc }
 	)
 	_schedule_timeline_render(should_follow_bottom)
 
@@ -2205,9 +2266,18 @@ func _send_chat_text(message_text: String, retry_from_request_id: String = "", a
 
 	var send_error: Error = socket.send_text(JSON.stringify(payload))
 	if send_error != OK:
+		var completed_at_utc: String = _get_utc_timestamp()
+		_show_response_error({
+			"error": {
+				"message": "发送请求失败：%s" % error_string(send_error)
+			}
+		})
+		if not active_assistant_entry_id.is_empty():
+			_set_timeline_entry_times(active_assistant_entry_id, active_stream_started_at_utc, completed_at_utc)
 		active_stream_id = ""
 		active_stream_started_at_utc = ""
 		active_assistant_item = null
+		active_assistant_entry_id = ""
 		_set_streaming_state(false)
 		if active_queue_message_id > 0:
 			_finish_active_queue_message(false, MESSAGE_QUEUE_STATUS_FAILED)
@@ -2588,7 +2658,11 @@ func _send_request(method: String, params: Dictionary, id_prefix: String) -> Str
 		"method": method,
 		"params": params
 	}
-	socket.send_text(JSON.stringify(payload))
+	var send_error: Error = socket.send_text(JSON.stringify(payload))
+	if send_error != OK:
+		push_warning("Failed to send request %s: %s" % [method, error_string(send_error)])
+		return ""
+
 	return next_request_id
 
 
@@ -2640,6 +2714,9 @@ func _handle_message(message: Dictionary) -> void:
 func _handle_response(message: Dictionary) -> void:
 	var ok: bool = bool(message.get("ok", false))
 	if not ok:
+		if str(message.get("id", "")).begins_with("mcp-config"):
+			_handle_mcp_config_error(message)
+			return
 		if str(message.get("id", "")).begins_with("next-step-hints"):
 			next_step_hint_request_id = ""
 			next_step_hint_anchor_request_id = ""
@@ -2669,9 +2746,12 @@ func _handle_response(message: Dictionary) -> void:
 			if active_queue_message_id > 0:
 				_finish_active_queue_message(false, MESSAGE_QUEUE_STATUS_FAILED)
 			active_stream_id = ""
+			active_stream_request_id = ""
 			active_stream_started_at_utc = ""
 			active_assistant_item = null
+			active_assistant_entry_id = ""
 			active_assistant_text = ""
+			_clear_paused_stream_context()
 			_set_streaming_state(false)
 			_process_message_queue()
 		else:
@@ -2686,6 +2766,8 @@ func _handle_response(message: Dictionary) -> void:
 	var result_dictionary: Dictionary = result as Dictionary
 	if bool(result_dictionary.get("nextStepHints", false)):
 		_apply_next_step_hints_response(str(message.get("id", "")), result_dictionary)
+	elif result_dictionary.has("customMcpServers"):
+		_apply_mcp_config_response(result_dictionary)
 	elif bool(result_dictionary.get("guideAdded", false)) or bool(result_dictionary.get("guideUpdated", false)):
 		_apply_guide_upsert_response(result_dictionary)
 	elif bool(result_dictionary.get("guideDeleted", false)):
@@ -2742,6 +2824,7 @@ func _handle_response(message: Dictionary) -> void:
 		_send_request("workspace.list", {}, "workspace-list")
 		_send_request("session.list", {}, "session-list")
 		_send_request("session.info", {}, "session-info")
+		_load_mcp_config()
 	elif result_dictionary.has("contextWindowTokens"):
 		_update_context_length(result_dictionary)
 		if context_popup_open_after_info:
@@ -2804,6 +2887,7 @@ func _handle_event(message: Dictionary) -> void:
 		active_stream_request_id = ""
 		active_stream_started_at_utc = ""
 		active_assistant_text = ""
+		_clear_paused_stream_context()
 		_set_streaming_state(false)
 		_send_request("session.save", {}, "session-save")
 		_send_request("session.info", {}, "session-info")
@@ -2814,18 +2898,20 @@ func _handle_event(message: Dictionary) -> void:
 	elif event_name == "ai.paused":
 		var should_follow_bottom: bool = _should_follow_timeline_updates()
 		var paused_request_id: String = active_stream_request_id
+		var has_approval_request: bool = str(data_dictionary.get("approvalId", "")).length() > 0
+		if has_approval_request:
+			_save_paused_stream_context()
 		_flush_pending_assistant_delta()
-		if active_assistant_item != null:
-			active_assistant_item.call("finish_message")
-			_schedule_timeline_render(should_follow_bottom)
 		active_assistant_item = null
 		active_assistant_entry_id = ""
 		active_stream_id = ""
 		active_stream_request_id = ""
 		active_stream_started_at_utc = ""
 		active_assistant_text = ""
+		if not has_approval_request:
+			_clear_paused_stream_context()
 		_set_streaming_state(false)
-		if str(data_dictionary.get("approvalId", "")).length() > 0:
+		if has_approval_request:
 			if active_queue_message_id > 0:
 				_set_queue_message_status(active_queue_message_id, MESSAGE_QUEUE_STATUS_APPROVAL)
 			_show_approval_dialog(data_dictionary)
@@ -2858,9 +2944,11 @@ func _handle_event(message: Dictionary) -> void:
 		pending_approval_id = ""
 		approval_dialog.visible = false
 		_update_send_state()
-		if tool_was_rejected and active_queue_message_id > 0:
-			_finish_active_queue_message(false, MESSAGE_QUEUE_STATUS_REJECTED)
-			_process_message_queue()
+		if tool_was_rejected:
+			_clear_paused_stream_context()
+			if active_queue_message_id > 0:
+				_finish_active_queue_message(false, MESSAGE_QUEUE_STATUS_REJECTED)
+				_process_message_queue()
 		elif active_queue_message_id > 0:
 			_set_queue_message_status(active_queue_message_id, MESSAGE_QUEUE_STATUS_SENDING)
 	elif event_name == "workflow.started":
@@ -2871,12 +2959,17 @@ func _handle_event(message: Dictionary) -> void:
 		_apply_guide_applied_event(data_dictionary)
 	elif event_name == "guide.deleted":
 		_apply_guide_deleted_event(data_dictionary)
+	elif event_name == "mcp.config.updated":
+		_apply_mcp_config_response(data_dictionary)
+		var mcp_error_text: String = str(data_dictionary.get("error", "")).strip_edges()
+		if not mcp_error_text.is_empty() and active_settings_menu != null and is_instance_valid(active_settings_menu):
+			active_settings_menu.call("show_mcp_error", mcp_error_text)
 	elif event_name == "editor.tool.requested":
 		_handle_editor_tool_requested(data_dictionary)
 
 
 func _is_global_event(event_name: String) -> bool:
-	return event_name == "tool.approved" or event_name == "tool.rejected" or event_name == "tool.approval_required" or event_name == "ai.paused" or event_name == "ai.cancelled" or event_name == "editor.tool.requested" or event_name.begins_with("workflow.") or event_name.begins_with("guide.")
+	return event_name == "tool.approved" or event_name == "tool.rejected" or event_name == "tool.approval_required" or event_name == "ai.paused" or event_name == "ai.cancelled" or event_name == "editor.tool.requested" or event_name == "mcp.config.updated" or event_name.begins_with("workflow.") or event_name.begins_with("guide.")
 
 
 func _request_next_step_hints(anchor_request_id: String, trigger: String) -> void:
@@ -3138,6 +3231,35 @@ func _update_archived_session_list(result: Dictionary) -> void:
 	_sync_settings_archived_sessions()
 
 
+func _apply_mcp_config_response(result: Dictionary) -> void:
+	custom_mcp_servers.clear()
+	var servers_value: Variant = result.get("customMcpServers", [])
+	if typeof(servers_value) == TYPE_ARRAY:
+		var servers_array: Array = servers_value as Array
+		for item: Variant in servers_array:
+			if typeof(item) != TYPE_DICTIONARY:
+				continue
+
+			custom_mcp_servers.append((item as Dictionary).duplicate(true))
+
+	_sync_settings_mcp_servers()
+
+
+func _handle_mcp_config_error(message: Dictionary) -> void:
+	var error_message: String = "MCP configuration failed"
+	var error_value: Variant = message.get("error", {})
+	if typeof(error_value) == TYPE_DICTIONARY:
+		var error_dictionary: Dictionary = error_value as Dictionary
+		error_message = str(error_dictionary.get("message", error_message))
+
+	if active_settings_menu != null and is_instance_valid(active_settings_menu):
+		active_settings_menu.call("show_mcp_error", error_message)
+		return
+
+	_show_background_context_viewer()
+	_show_response_error(message)
+
+
 func _update_workspace_list(result: Dictionary) -> void:
 	workspaces_by_id.clear()
 	workspace_filter_button.clear()
@@ -3381,6 +3503,7 @@ func _clear_chat_items() -> void:
 	active_thinking_entry_id = ""
 	active_stream_request_id = ""
 	active_stream_started_at_utc = ""
+	_clear_paused_stream_context()
 	connection_status_entry_id = ""
 	active_assistant_text = ""
 	pending_assistant_delta_text = ""
@@ -4834,6 +4957,9 @@ func _localize_tool_name_for_display(raw_tool_name: String) -> String:
 		"mcp_terminal_run_godot_scene_script", "run_godot_scene_script":
 			return "执行场景脚本"
 
+	if raw_tool_name.begins_with("mcp_custom_"):
+		return "自定义 MCP 工具"
+
 	if raw_tool_name.begins_with("mcp_"):
 		return "内部工具"
 
@@ -5178,13 +5304,18 @@ func _on_settings_button_pressed() -> void:
 	add_child(settings_menu)
 	settings_menu.call("setup_provider_config", provider_config_status, _get_frontend_config_snapshot())
 	settings_menu.call("setup_archived_sessions", _get_archived_sessions_snapshot(), _get_workspace_snapshot())
+	settings_menu.call("setup_mcp_servers", _get_custom_mcp_servers_snapshot(), _is_socket_open())
 	settings_menu.connect("provider_config_save_requested", Callable(self, "_on_settings_provider_config_save_requested"))
 	settings_menu.connect("provider_config_clear_requested", Callable(self, "_on_settings_provider_config_clear_requested"))
 	settings_menu.connect("frontend_config_save_requested", Callable(self, "_on_settings_frontend_config_save_requested"))
 	settings_menu.connect("archived_session_restore_requested", Callable(self, "_on_settings_archived_session_restore_requested"))
 	settings_menu.connect("archived_session_delete_requested", Callable(self, "_on_settings_archived_session_delete_requested"))
+	settings_menu.connect("mcp_server_add_requested", Callable(self, "_on_settings_mcp_server_add_requested"))
+	settings_menu.connect("mcp_server_remove_requested", Callable(self, "_on_settings_mcp_server_remove_requested"))
+	settings_menu.connect("mcp_server_enabled_requested", Callable(self, "_on_settings_mcp_server_enabled_requested"))
 	settings_menu.tree_exited.connect(_on_settings_menu_tree_exited.bind(settings_menu))
 	_send_request("session.archived.list", {}, "session-archived-list")
+	_load_mcp_config()
 
 
 func _get_frontend_config_snapshot() -> Dictionary:
@@ -5221,6 +5352,14 @@ func _get_workspace_snapshot() -> Array[Dictionary]:
 	return workspaces
 
 
+func _get_custom_mcp_servers_snapshot() -> Array[Dictionary]:
+	var servers: Array[Dictionary] = []
+	for metadata: Dictionary in custom_mcp_servers:
+		servers.append(metadata.duplicate(true))
+
+	return servers
+
+
 func _sync_settings_archived_sessions() -> void:
 	if active_settings_menu == null or not is_instance_valid(active_settings_menu):
 		return
@@ -5229,6 +5368,17 @@ func _sync_settings_archived_sessions() -> void:
 		"setup_archived_sessions",
 		_get_archived_sessions_snapshot(),
 		_get_workspace_snapshot()
+	)
+
+
+func _sync_settings_mcp_servers() -> void:
+	if active_settings_menu == null or not is_instance_valid(active_settings_menu):
+		return
+
+	active_settings_menu.call(
+		"setup_mcp_servers",
+		_get_custom_mcp_servers_snapshot(),
+		_is_socket_open()
 	)
 
 
@@ -5249,6 +5399,40 @@ func _on_settings_archived_session_delete_requested(session_id: String) -> void:
 		return
 
 	_send_request("session.archived.delete", { "sessionId": session_id }, "session-archived-delete")
+
+
+func _on_settings_mcp_server_add_requested(config: Dictionary) -> void:
+	if not _is_socket_open():
+		if active_settings_menu != null and is_instance_valid(active_settings_menu):
+			active_settings_menu.call("show_mcp_error", "Backend is disconnected. Reconnect before adding an MCP server.")
+		return
+
+	var add_request_id: String = _send_request("mcp.config.add", config, "mcp-config-add")
+	if add_request_id.is_empty() and active_settings_menu != null and is_instance_valid(active_settings_menu):
+		active_settings_menu.call("show_mcp_error", "Failed to send MCP server configuration to backend.")
+
+
+func _on_settings_mcp_server_remove_requested(server_id: String) -> void:
+	if not _is_socket_open() or server_id.is_empty():
+		if active_settings_menu != null and is_instance_valid(active_settings_menu):
+			active_settings_menu.call("show_mcp_error", "Backend is disconnected. Reconnect before removing an MCP server.")
+		return
+
+	var remove_request_id: String = _send_request("mcp.config.remove", { "serverId": server_id }, "mcp-config-remove")
+	if remove_request_id.is_empty() and active_settings_menu != null and is_instance_valid(active_settings_menu):
+		active_settings_menu.call("show_mcp_error", "Failed to send MCP server removal to backend.")
+
+
+func _on_settings_mcp_server_enabled_requested(server_id: String, enabled: bool) -> void:
+	if not _is_socket_open() or server_id.is_empty():
+		if active_settings_menu != null and is_instance_valid(active_settings_menu):
+			active_settings_menu.call("show_mcp_error", "Backend is disconnected. Reconnect before changing an MCP server.")
+		_sync_settings_mcp_servers()
+		return
+
+	var enabled_request_id: String = _send_request("mcp.config.setEnabled", { "serverId": server_id, "enabled": enabled }, "mcp-config-enabled")
+	if enabled_request_id.is_empty() and active_settings_menu != null and is_instance_valid(active_settings_menu):
+		active_settings_menu.call("show_mcp_error", "Failed to send MCP server state change to backend.")
 
 
 func _on_settings_provider_config_save_requested(api_key: String) -> void:

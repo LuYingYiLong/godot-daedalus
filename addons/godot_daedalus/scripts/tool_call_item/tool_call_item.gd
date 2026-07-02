@@ -451,6 +451,9 @@ func _localize_tool_name(raw_tool_name: String) -> String:
 		"mcp_terminal_run_godot_scene_script":
 			return "执行场景脚本"
 
+	if normalized_tool_name.begins_with("mcp_custom_"):
+		return "自定义 MCP 工具"
+
 	if _looks_like_internal_tool_name(normalized_tool_name):
 		return "内部工具"
 
@@ -462,6 +465,8 @@ func _infer_category(normalized_tool_name: String, target: Dictionary) -> String
 		return "search"
 	if normalized_tool_name.contains("propose_"):
 		return "propose"
+	if normalized_tool_name.begins_with("mcp_custom_"):
+		return "write"
 	if normalized_tool_name.begins_with("mcp_terminal_"):
 		if normalized_tool_name == "mcp_terminal_run_godot_scene_script":
 			return "scene"

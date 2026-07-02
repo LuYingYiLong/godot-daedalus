@@ -6,6 +6,9 @@ signal provider_config_clear_requested
 signal frontend_config_save_requested(backend_url: String, custom_instructions: String, next_step_hints_enabled: bool)
 signal archived_session_restore_requested(session_id: String)
 signal archived_session_delete_requested(session_id: String)
+signal mcp_server_add_requested(config: Dictionary)
+signal mcp_server_remove_requested(server_id: String)
+signal mcp_server_enabled_requested(server_id: String, enabled: bool)
 
 @onready var tab_container: TabContainer = %TabContainer
 @onready var provider_option_button: OptionButton = %ProviderOptionButton
@@ -16,6 +19,8 @@ signal archived_session_delete_requested(session_id: String)
 @onready var custom_instructions_warning_button: Button = %CustomInstructionsWarningButton
 @onready var next_step_hints_check_box: CheckBox = %NextStepHintsCheckBox
 @onready var custom_instructions_edit: TextEdit = %CustomInstructionsEdit
+@onready var add_mcp_server_button: Button = %AddMCPServerButton
+@onready var mcp_status_label: Label = %MCPStatusLabel
 @onready var mcp_server_list: VBoxContainer = %MCPServerList
 @onready var archived_workspace_filter_option_button: OptionButton = %WorkspaceFilterOptionButton
 @onready var search_archived_chat_line_edit: LineEdit = %SearchArchivedChatLineEdit
@@ -23,6 +28,8 @@ signal archived_session_delete_requested(session_id: String)
 @onready var archived_chat_list: VBoxContainer = %ArchivedChatList
 
 const ARCHIVED_CHAT_ITEM_SCENE_UID: String = "uid://kyksk24wd7d3"
+const MCP_SERVER_ITEM_SCENE_UID: String = "uid://cuwihfpwn6b68"
+const ADD_MCP_SERVER_DIALOG_UID: String = "uid://cb7acb4w7s4xl"
 const CUSTOM_INSTRUCTIONS_WARNING_CHARS: int = 4000
 const CUSTOM_INSTRUCTIONS_HEAVY_CHARS: int = 12000
 const EDITOR_TYPE: StringName = &"Editor"
@@ -39,18 +46,25 @@ const CONFIRM_ACTION_DELETE_ALL_ARCHIVED_SESSIONS: StringName = &"delete_all_arc
 
 var archived_sessions: Array[Dictionary] = []
 var archived_workspaces_by_id: Dictionary[String, Dictionary] = {}
+var custom_mcp_servers: Array[Dictionary] = []
+var mcp_backend_available: bool = true
+var mcp_add_pending: bool
+var pending_mcp_server_metadata: Dictionary = {}
 var archived_workspace_filter: String
 var archived_search_text: String
 var pending_confirmation_action: StringName = CONFIRM_ACTION_NONE
 var pending_delete_session_id: String
 var pending_delete_session_ids: Array[String] = []
+var pending_delete_mcp_server_id: String
 var archive_delete_confirmation_dialog: ConfirmationDialog
 var custom_instructions_warning_dialog: AcceptDialog
+var mcp_delete_confirmation_dialog: ConfirmationDialog
 
 
 func _ready() -> void:
 	tab_container.current_tab = 0
 	_update_custom_instructions_status()
+	_render_mcp_servers()
 	_update_delete_all_archived_chats_button()
 	call_deferred(&"_apply_editor_dialog_theme")
 
@@ -95,6 +109,28 @@ func setup_archived_sessions(sessions: Array, workspaces: Array = []) -> void:
 	_populate_archived_workspace_filter()
 	_render_archived_sessions()
 	_update_delete_all_archived_chats_button()
+
+
+func setup_mcp_servers(servers: Array, backend_available: bool = true) -> void:
+	custom_mcp_servers.clear()
+	for item: Variant in servers:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		custom_mcp_servers.append((item as Dictionary).duplicate(true))
+
+	mcp_backend_available = backend_available
+	mcp_add_pending = false
+	pending_mcp_server_metadata.clear()
+	_render_mcp_servers()
+
+
+func show_mcp_error(message_text: String) -> void:
+	mcp_add_pending = false
+	pending_mcp_server_metadata.clear()
+	mcp_status_label.visible = true
+	mcp_status_label.text = message_text
+	mcp_status_label.tooltip_text = message_text
 
 
 func _on_confirmed() -> void:
@@ -159,6 +195,46 @@ func _populate_archived_workspace_filter() -> void:
 			return
 
 	archived_workspace_filter_option_button.select(0)
+
+
+func _render_mcp_servers() -> void:
+	for child_node: Node in mcp_server_list.get_children():
+		child_node.queue_free()
+
+	add_mcp_server_button.disabled = not mcp_backend_available or mcp_add_pending
+	add_mcp_server_button.tooltip_text = "Adding custom MCP server..." if mcp_add_pending else ("Add custom MCP server" if mcp_backend_available else "Backend is disconnected")
+	if not mcp_backend_available:
+		mcp_status_label.visible = true
+		mcp_status_label.text = "Backend is disconnected. MCP server settings are unavailable."
+	elif mcp_add_pending:
+		mcp_status_label.visible = true
+		mcp_status_label.text = "Adding custom MCP server..."
+	elif custom_mcp_servers.is_empty():
+		mcp_status_label.visible = true
+		mcp_status_label.text = "No custom MCP servers"
+	else:
+		mcp_status_label.visible = false
+		mcp_status_label.text = ""
+
+	var rendered_servers: Array[Dictionary] = []
+	for metadata: Dictionary in custom_mcp_servers:
+		rendered_servers.append(metadata)
+	if mcp_add_pending and not pending_mcp_server_metadata.is_empty():
+		rendered_servers.append(pending_mcp_server_metadata.duplicate(true) as Dictionary)
+
+	if rendered_servers.is_empty():
+		return
+
+	var item_scene: PackedScene = load(MCP_SERVER_ITEM_SCENE_UID) as PackedScene
+	if item_scene == null:
+		return
+
+	for metadata: Dictionary in rendered_servers:
+		var mcp_server_item: Node = item_scene.instantiate()
+		mcp_server_list.add_child(mcp_server_item)
+		mcp_server_item.call("setup", metadata)
+		mcp_server_item.connect("remove_requested", Callable(self, "_on_mcp_server_item_remove_requested"))
+		mcp_server_item.connect("enabled_changed", Callable(self, "_on_mcp_server_item_enabled_changed"))
 
 
 func _render_archived_sessions() -> void:
@@ -498,4 +574,122 @@ func _update_delete_all_archived_chats_button() -> void:
 
 
 func _on_add_mcp_server_button_pressed() -> void:
-	pass # Replace with function body.
+	if not mcp_backend_available:
+		show_mcp_error("Backend is disconnected. Reconnect before adding an MCP server.")
+		return
+
+	var packed_scene: PackedScene = load(ADD_MCP_SERVER_DIALOG_UID) as PackedScene
+	if packed_scene == null:
+		show_mcp_error("Add MCP server dialog could not be loaded.")
+		return
+
+	var dialog: ConfirmationDialog = packed_scene.instantiate() as ConfirmationDialog
+	add_child(dialog)
+	var submit_callable: Callable = Callable(self, "_on_add_mcp_server_dialog_submitted").bind(dialog)
+	dialog.connect("server_config_submitted", submit_callable)
+	dialog.close_requested.connect(dialog.queue_free)
+	dialog.canceled.connect(dialog.queue_free)
+	dialog.popup_centered()
+
+
+func _on_add_mcp_server_dialog_submitted(config: Dictionary, dialog: ConfirmationDialog) -> void:
+	mcp_add_pending = true
+	pending_mcp_server_metadata = _create_pending_mcp_server_metadata(config)
+	mcp_server_add_requested.emit(config)
+	_render_mcp_servers()
+	if dialog != null and is_instance_valid(dialog):
+		dialog.queue_free()
+
+
+func _create_pending_mcp_server_metadata(config: Dictionary) -> Dictionary:
+	var metadata: Dictionary = {
+		"id": "__pending_mcp_server__",
+		"name": str(config.get("name", "Custom MCP")),
+		"description": str(config.get("description", "")),
+		"transport": str(config.get("transport", "stdio")),
+		"enabled": true,
+		"status": "connecting",
+		"toolCount": 0,
+		"pending": true
+	}
+
+	var command_text: String = str(config.get("command", "")).strip_edges()
+	if not command_text.is_empty():
+		metadata["command"] = command_text
+
+	var url_text: String = str(config.get("url", "")).strip_edges()
+	if not url_text.is_empty():
+		metadata["url"] = url_text
+
+	var env_value: Variant = config.get("env", {})
+	if typeof(env_value) == TYPE_DICTIONARY:
+		metadata["envNames"] = (env_value as Dictionary).keys()
+
+	var headers_value: Variant = config.get("headers", {})
+	if typeof(headers_value) == TYPE_DICTIONARY:
+		metadata["headerNames"] = (headers_value as Dictionary).keys()
+
+	return metadata
+
+
+func _on_mcp_server_item_enabled_changed(server_id: String, enabled: bool) -> void:
+	if server_id.is_empty():
+		return
+	if not mcp_backend_available:
+		show_mcp_error("Backend is disconnected. Reconnect before changing MCP servers.")
+		_render_mcp_servers()
+		return
+
+	mcp_server_enabled_requested.emit(server_id, enabled)
+
+
+func _on_mcp_server_item_remove_requested(server_id: String) -> void:
+	if server_id.is_empty():
+		return
+	if not mcp_backend_available:
+		show_mcp_error("Backend is disconnected. Reconnect before removing MCP servers.")
+		return
+
+	var server_name: String = _get_mcp_server_name(server_id)
+	_close_mcp_delete_confirmation_dialog()
+	pending_delete_mcp_server_id = server_id
+	mcp_delete_confirmation_dialog = ConfirmationDialog.new()
+	mcp_delete_confirmation_dialog.title = "Remove MCP server?"
+	mcp_delete_confirmation_dialog.dialog_text = "Remove custom MCP server \"%s\"?\n\nSaved env/header secrets for this server will be deleted." % server_name
+	mcp_delete_confirmation_dialog.ok_button_text = "Remove"
+	add_child(mcp_delete_confirmation_dialog)
+	mcp_delete_confirmation_dialog.confirmed.connect(Callable(self, "_on_mcp_delete_confirmation_confirmed"))
+	mcp_delete_confirmation_dialog.canceled.connect(Callable(self, "_on_mcp_delete_confirmation_closed"))
+	mcp_delete_confirmation_dialog.close_requested.connect(Callable(self, "_on_mcp_delete_confirmation_closed"))
+	mcp_delete_confirmation_dialog.popup_centered()
+
+
+func _on_mcp_delete_confirmation_confirmed() -> void:
+	if not pending_delete_mcp_server_id.is_empty():
+		mcp_server_remove_requested.emit(pending_delete_mcp_server_id)
+
+	_on_mcp_delete_confirmation_closed()
+
+
+func _on_mcp_delete_confirmation_closed() -> void:
+	pending_delete_mcp_server_id = ""
+	_close_mcp_delete_confirmation_dialog()
+
+
+func _close_mcp_delete_confirmation_dialog() -> void:
+	if mcp_delete_confirmation_dialog == null or not is_instance_valid(mcp_delete_confirmation_dialog):
+		mcp_delete_confirmation_dialog = null
+		return
+
+	mcp_delete_confirmation_dialog.queue_free()
+	mcp_delete_confirmation_dialog = null
+
+
+func _get_mcp_server_name(server_id: String) -> String:
+	for metadata: Dictionary in custom_mcp_servers:
+		if str(metadata.get("id", "")) == server_id:
+			var server_name: String = str(metadata.get("name", "Custom MCP")).strip_edges()
+			if not server_name.is_empty():
+				return server_name
+
+	return "Custom MCP"

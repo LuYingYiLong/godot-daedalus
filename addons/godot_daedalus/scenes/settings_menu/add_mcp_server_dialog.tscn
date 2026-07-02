@@ -7,7 +7,6 @@ oversampling_override = 1.0
 title = "Add MCP server"
 initial_position = 2
 size = Vector2i(510, 407)
-force_native = true
 script = ExtResource("1_loefn")
 
 [node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=2062931845]
@@ -68,7 +67,7 @@ columns = 2
 [node name="CommonLabel" type="Label" parent="VBoxContainer/StdioContainer" unique_id=1946099287]
 custom_minimum_size = Vector2(128, 0)
 layout_mode = 2
-text = "Common"
+text = "Command"
 
 [node name="CommonLineEdit" type="LineEdit" parent="VBoxContainer/StdioContainer" unique_id=1086438480]
 unique_name_in_owner = true
@@ -134,3 +133,21 @@ layout_mode = 2
 placeholder_text = "Authorization: Bearer your_token_here
 Content-Type: application/json"
 caret_blink = true
+
+[node name="ErrorLabel" type="Label" parent="VBoxContainer" unique_id=103504071]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"WarningLabel"
+text = "Error"
+autowrap_mode = 2
+
+[connection signal="confirmed" from="." to="." method="_on_confirmed"]
+[connection signal="text_changed" from="VBoxContainer/GridContainer/NameLineEdit" to="." method="_on_line_edit_text_changed"]
+[connection signal="text_changed" from="VBoxContainer/GridContainer/DescriptionTextEdit" to="." method="_on_text_edit_text_changed"]
+[connection signal="item_selected" from="VBoxContainer/GridContainer/TypeOptionButton" to="." method="_on_type_option_button_item_selected"]
+[connection signal="text_changed" from="VBoxContainer/StdioContainer/CommonLineEdit" to="." method="_on_line_edit_text_changed"]
+[connection signal="text_changed" from="VBoxContainer/StdioContainer/ArgsTextEdit" to="." method="_on_text_edit_text_changed"]
+[connection signal="text_changed" from="VBoxContainer/StdioContainer/EnvTextEdit" to="." method="_on_text_edit_text_changed"]
+[connection signal="text_changed" from="VBoxContainer/HttpContainer/URLLineEdit" to="." method="_on_line_edit_text_changed"]
+[connection signal="text_changed" from="VBoxContainer/HttpContainer/HttpHeaderTextEdit" to="." method="_on_text_edit_text_changed"]

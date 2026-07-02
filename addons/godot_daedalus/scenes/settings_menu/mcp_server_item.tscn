@@ -29,3 +29,6 @@ icon = ExtResource("2_m40qf")
 
 [node name="CheckButton" type="CheckButton" parent="." unique_id=1507414911]
 layout_mode = 2
+
+[connection signal="pressed" from="RemoveButton" to="." method="_on_remove_button_pressed"]
+[connection signal="toggled" from="CheckButton" to="." method="_on_check_button_toggled"]

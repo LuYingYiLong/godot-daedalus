@@ -3,7 +3,6 @@
 [ext_resource type="Script" uid="uid://be4xxflyjlo3e" path="res://addons/godot_daedalus/scripts/settings_menu/settings_menu.gd" id="1_smwku"]
 [ext_resource type="Texture2D" uid="uid://cwfwhi42kpukr" path="res://addons/godot_daedalus/assets/icons/clear.svg" id="2_y8kc5"]
 [ext_resource type="Texture2D" uid="uid://cjjnoxgoriwwi" path="res://addons/godot_daedalus/assets/icons/warning.svg" id="3_pcvmy"]
-[ext_resource type="PackedScene" uid="uid://cuwihfpwn6b68" path="res://addons/godot_daedalus/scenes/settings_menu/mcp_server_item.tscn" id="4_mcffq"]
 
 [node name="SettingsMenu" type="AcceptDialog" unique_id=740368191]
 oversampling_override = 1.0
@@ -134,9 +133,19 @@ metadata/_tab_index = 2
 metadata/_tab_name = "MCP server"
 
 [node name="AddMCPServerButton" type="Button" parent="TabContainer/MCPServer" unique_id=418947967]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 4
+tooltip_text = "Add custom MCP server"
 text = "Add MCP server"
+
+[node name="MCPStatusLabel" type="Label" parent="TabContainer/MCPServer" unique_id=943741942]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+text = "No custom MCP servers"
+horizontal_alignment = 1
+autowrap_mode = 2
 
 [node name="ScrollContainer" type="ScrollContainer" parent="TabContainer/MCPServer" unique_id=1478158191]
 layout_mode = 2
@@ -147,9 +156,6 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-
-[node name="MCPServerItem" parent="TabContainer/MCPServer/ScrollContainer/MCPServerList" unique_id=1650741122 instance=ExtResource("4_mcffq")]
-layout_mode = 2
 
 [node name="ArchivedChats" type="VBoxContainer" parent="TabContainer" unique_id=1085550901]
 visible = false

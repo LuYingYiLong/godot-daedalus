@@ -1,6 +1,9 @@
 @tool
 extends Button
 
+signal open_requested(session_id: String)
+signal archive_requested(session_id: String)
+
 @onready var title_label: Label = %TitleLabel
 @onready var loader_icon: TextureRect = %LoaderIcon
 @onready var archive_button: Button = %ArchiveButton
@@ -8,6 +11,7 @@ extends Button
 @onready var relative_time_label: Label = %RelativeTimeLabel
 
 var session_id: String
+var suppress_next_open: bool
 
 
 func setup(item_session_id: String, title_text: String, relative_time_text: String) -> void:
@@ -31,8 +35,20 @@ func _on_mouse_entered() -> void:
 
 
 func _on_mouse_exited() -> void:
+	var button_rect: Rect2 = archive_button.get_rect()
+	if button_rect.has_point(get_local_mouse_position()): return
 	archive_button.hide()
 
 
 func _on_archive_button_pressed() -> void:
-	pass # Replace with function body.
+	suppress_next_open = true
+	archive_requested.emit(session_id)
+	archive_button.hide()
+
+
+func _on_pressed() -> void:
+	if suppress_next_open:
+		suppress_next_open = false
+		return
+
+	open_requested.emit(session_id)

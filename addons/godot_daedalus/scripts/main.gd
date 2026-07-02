@@ -93,6 +93,8 @@ var pending_chat_text: String
 var pending_approval_id: String
 var sessions_by_id: Dictionary[String, Dictionary]
 var session_ids_in_order: Array[String]
+var archived_sessions_by_id: Dictionary[String, Dictionary]
+var archived_session_ids_in_order: Array[String]
 var workspaces_by_id: Dictionary[String, Dictionary]
 var selected_workspace_filter: String
 var session_search_text: String
@@ -125,6 +127,7 @@ var active_assistant_entry_id: String
 var active_thinking_entry_id: String
 var active_tool_entry_ids_by_call_id: Dictionary[String, String]
 var active_stream_request_id: String
+var active_stream_started_at_utc: String
 var active_workflow_id: String
 var pending_assistant_delta_text: String
 var pending_assistant_delta_queued: bool
@@ -138,6 +141,7 @@ var workflow_phase_nodes_by_id: Dictionary[String, Node]
 var latest_context_info: Dictionary
 var context_popup_menu: PopupPanel
 var context_popup_open_after_info: bool
+var active_settings_menu: Node
 var backend_url: String = DEFAULT_BACKEND_URL
 var custom_instructions: String
 var pending_provider_config_api_key: String
@@ -510,13 +514,82 @@ func _on_send_button_pressed() -> void:
 	_send_chat_text(message_text)
 
 
-func _on_stop_button_pressed() -> void:
-	_flush_pending_assistant_delta()
-	active_stream_id = ""
+func _on_user_message_resend_requested(request_id_to_retry: String, message_text: String) -> void:
+	if message_text.strip_edges().is_empty() or not active_stream_id.is_empty():
+		return
+
+	if active_session_id.is_empty():
+		_send_chat_text(message_text)
+		return
+
+	_trim_timeline_from_request(request_id_to_retry)
+	_send_chat_text(message_text, request_id_to_retry)
+
+
+func _trim_timeline_from_request(request_id_to_retry: String) -> void:
+	if request_id_to_retry.is_empty():
+		return
+
+	var first_index: int = -1
+	for index: int in range(timeline_entries.size()):
+		var entry: Dictionary = timeline_entries[index]
+		if str(entry.get("request_id", "")) == request_id_to_retry:
+			first_index = index
+			break
+
+	if first_index < 0:
+		return
+
+	while timeline_entries.size() > first_index:
+		timeline_entries.remove_at(timeline_entries.size() - 1)
+
+	for child: Node in timeline_visible_container.get_children():
+		child.queue_free()
+	rendered_entry_nodes.clear()
+	rendered_entry_indices.clear()
+	tool_items_by_call_id.clear()
 	active_assistant_item = null
+	active_thinking_item = null
 	active_assistant_entry_id = ""
+	active_thinking_entry_id = ""
+	active_assistant_text = ""
+	active_stream_started_at_utc = ""
+	_rebuild_timeline_index_cache()
+	_rebuild_timeline_height_cache()
+	_clear_todo_items()
+	_render_visible_timeline(true)
+
+
+func _on_stop_button_pressed() -> void:
+	if active_stream_id.is_empty():
+		return
+
+	var request_id_to_cancel: String = active_stream_id
+	_send_request("ai.cancel", { "requestId": request_id_to_cancel }, "ai-cancel")
+	_stop_active_stream_locally(true)
+
+
+func _stop_active_stream_locally(prepare_continue: bool) -> void:
+	_flush_pending_assistant_delta()
+	_flush_pending_thinking_delta()
+	if active_assistant_item != null:
+		active_assistant_item.call("finish_message")
+	if active_thinking_item != null:
+		active_thinking_item.call("finish_thinking")
+
+	active_stream_id = ""
+	active_stream_request_id = ""
+	active_stream_started_at_utc = ""
+	active_assistant_item = null
+	active_thinking_item = null
+	active_assistant_entry_id = ""
+	active_thinking_entry_id = ""
 	active_assistant_text = ""
 	_set_streaming_state(false)
+
+	if prepare_continue and text_edit.text.strip_edges().is_empty():
+		text_edit.text = "继续"
+		text_edit.grab_focus()
 
 
 func _on_approve_button_pressed() -> void:
@@ -526,6 +599,7 @@ func _on_approve_button_pressed() -> void:
 	var should_follow_bottom: bool = _should_follow_timeline_updates()
 	active_stream_id = _send_request("approval.approve", { "approvalId": pending_approval_id }, "approval-approve")
 	active_stream_request_id = active_stream_id
+	active_stream_started_at_utc = _get_utc_timestamp()
 	active_assistant_item = null
 	active_assistant_entry_id = ""
 	active_assistant_text = ""
@@ -564,7 +638,7 @@ func _open_session(session_id: String) -> void:
 	_send_request("session.open", { "sessionId": session_id, "limit": SESSION_OPEN_MESSAGE_LIMIT }, "session-open")
 
 
-func _send_chat_text(message_text: String) -> void:
+func _send_chat_text(message_text: String, retry_from_request_id: String = "") -> void:
 	if not _is_socket_open():
 		return
 
@@ -579,8 +653,9 @@ func _send_chat_text(message_text: String) -> void:
 	request_id += 1
 	active_stream_id = "daedalus-chat-%d" % request_id
 	active_stream_request_id = active_stream_id
+	active_stream_started_at_utc = _get_utc_timestamp()
 	var should_follow_bottom: bool = _should_follow_timeline_updates()
-	_append_timeline_entry("user", active_stream_request_id, message_text)
+	_append_timeline_entry("user", active_stream_request_id, message_text, "", { "sent_at_utc": active_stream_started_at_utc })
 	_schedule_timeline_render(should_follow_bottom)
 
 	var chat_params: Dictionary[String, Variant] = {
@@ -594,6 +669,8 @@ func _send_chat_text(message_text: String) -> void:
 	}
 	if not custom_instructions.is_empty():
 		chat_params["systemPrompt"] = custom_instructions
+	if not retry_from_request_id.is_empty():
+		chat_params["retryFromRequestId"] = retry_from_request_id
 
 	var payload: Dictionary[String, Variant] = {
 		"type": "request",
@@ -605,6 +682,7 @@ func _send_chat_text(message_text: String) -> void:
 	var send_error: Error = socket.send_text(JSON.stringify(payload))
 	if send_error != OK:
 		active_stream_id = ""
+		active_stream_started_at_utc = ""
 		active_assistant_item = null
 		_set_streaming_state(false)
 		return
@@ -623,6 +701,10 @@ func _make_session_title(message_text: String) -> String:
 		return "新会话"
 
 	return one_line
+
+
+func _get_utc_timestamp() -> String:
+	return "%sZ" % Time.get_datetime_string_from_system(true, false)
 
 
 func _send_request(method: String, params: Dictionary, id_prefix: String) -> String:
@@ -696,6 +778,7 @@ func _handle_response(message: Dictionary) -> void:
 		if str(message.get("id", "")) == active_stream_id:
 			_show_response_error(message)
 			active_stream_id = ""
+			active_stream_started_at_utc = ""
 			active_assistant_item = null
 			active_assistant_text = ""
 			_set_streaming_state(false)
@@ -709,7 +792,9 @@ func _handle_response(message: Dictionary) -> void:
 		return
 
 	var result_dictionary: Dictionary = result as Dictionary
-	if result_dictionary.has("workspaces"):
+	if result_dictionary.has("archivedSessions"):
+		_update_archived_session_list(result_dictionary)
+	elif result_dictionary.has("workspaces"):
 		_update_workspace_list(result_dictionary)
 	elif result_dictionary.has("sessions"):
 		_update_session_list(result_dictionary)
@@ -740,6 +825,7 @@ func _handle_response(message: Dictionary) -> void:
 	elif bool(result_dictionary.get("paused", false)) and str(result_dictionary.get("approvalId", "")).length() > 0:
 		active_stream_id = ""
 		active_stream_request_id = ""
+		active_stream_started_at_utc = ""
 		active_assistant_item = null
 		active_assistant_entry_id = ""
 		active_assistant_text = ""
@@ -762,6 +848,12 @@ func _handle_response(message: Dictionary) -> void:
 		_show_first_pending_approval(result_dictionary)
 	elif bool(result_dictionary.get("saved", false)):
 		_send_request("session.list", {}, "session-list")
+	elif bool(result_dictionary.get("archived", false)):
+		_apply_archived_session_response(result_dictionary)
+	elif bool(result_dictionary.get("restored", false)):
+		_refresh_session_and_archive_lists()
+	elif bool(result_dictionary.get("deletedArchived", false)):
+		_remove_archived_session(str(result_dictionary.get("sessionId", "")))
 	elif bool(result_dictionary.get("approved", false)) or bool(result_dictionary.get("rejected", false)):
 		pending_approval_id = ""
 		_send_request("session.info", {}, "session-info")
@@ -788,14 +880,18 @@ func _handle_event(message: Dictionary) -> void:
 		_schedule_assistant_delta_flush()
 	elif event_name == "ai.done":
 		var should_follow_bottom: bool = _should_follow_timeline_updates()
+		var completed_at_utc: String = _get_utc_timestamp()
 		_flush_pending_assistant_delta()
+		if not active_assistant_entry_id.is_empty():
+			_set_timeline_entry_times(active_assistant_entry_id, active_stream_started_at_utc, completed_at_utc)
 		if active_assistant_item != null:
-			active_assistant_item.call("finish_message")
-			_schedule_timeline_render(should_follow_bottom)
+			active_assistant_item.call("finish_message", active_stream_started_at_utc, completed_at_utc)
+		_schedule_timeline_render(should_follow_bottom)
 		active_assistant_item = null
 		active_assistant_entry_id = ""
 		active_stream_id = ""
 		active_stream_request_id = ""
+		active_stream_started_at_utc = ""
 		active_assistant_text = ""
 		_set_streaming_state(false)
 		_send_request("session.save", {}, "session-save")
@@ -810,10 +906,13 @@ func _handle_event(message: Dictionary) -> void:
 		active_assistant_entry_id = ""
 		active_stream_id = ""
 		active_stream_request_id = ""
+		active_stream_started_at_utc = ""
 		active_assistant_text = ""
 		_set_streaming_state(false)
 		if str(data_dictionary.get("approvalId", "")).length() > 0:
 			_show_approval_dialog(data_dictionary)
+	elif event_name == "ai.cancelled":
+		_stop_active_stream_locally(false)
 	elif event_name == "ai.thinking.delta":
 		_append_thinking_event(str(data_dictionary.get("text", "")))
 	elif event_name == "ai.thinking.done":
@@ -844,7 +943,7 @@ func _handle_event(message: Dictionary) -> void:
 
 
 func _is_global_event(event_name: String) -> bool:
-	return event_name == "tool.approved" or event_name == "tool.rejected" or event_name == "tool.approval_required" or event_name == "ai.paused" or event_name.begins_with("workflow.")
+	return event_name == "tool.approved" or event_name == "tool.rejected" or event_name == "tool.approval_required" or event_name == "ai.paused" or event_name == "ai.cancelled" or event_name.begins_with("workflow.")
 
 
 func _update_session_list(result: Dictionary) -> void:
@@ -870,6 +969,31 @@ func _update_session_list(result: Dictionary) -> void:
 		session_ids_in_order.append(session_id)
 
 	_render_session_list()
+
+
+func _update_archived_session_list(result: Dictionary) -> void:
+	archived_sessions_by_id.clear()
+	archived_session_ids_in_order.clear()
+
+	var sessions_value: Variant = result.get("archivedSessions", [])
+	if typeof(sessions_value) != TYPE_ARRAY:
+		_sync_settings_archived_sessions()
+		return
+
+	var sessions_array: Array = sessions_value as Array
+	for item: Variant in sessions_array:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var metadata: Dictionary = item as Dictionary
+		var session_id: String = str(metadata.get("id", ""))
+		if session_id.is_empty():
+			continue
+
+		archived_sessions_by_id[session_id] = metadata
+		archived_session_ids_in_order.append(session_id)
+
+	_sync_settings_archived_sessions()
 
 
 func _update_workspace_list(result: Dictionary) -> void:
@@ -899,6 +1023,7 @@ func _update_workspace_list(result: Dictionary) -> void:
 			workspace_filter_button.set_item_metadata(workspace_filter_button.get_item_count() - 1, workspace_id)
 
 	_render_session_list()
+	_sync_settings_archived_sessions()
 
 
 func _render_session_list() -> void:
@@ -955,7 +1080,8 @@ func _render_workspace_group(workspace_id: String) -> void:
 		var session_item: Button = SESSION_ITEM_SCENE.instantiate() as Button
 		session_list.add_child(session_item)
 		session_item.call("setup", session_id, title_text, _format_relative_time(updated_at))
-		session_item.pressed.connect(_on_dynamic_session_item_pressed.bind(session_id))
+		session_item.connect("open_requested", Callable(self, "_on_dynamic_session_item_pressed"))
+		session_item.connect("archive_requested", Callable(self, "_on_session_archive_requested"))
 
 
 func _does_session_match_filters(metadata: Dictionary) -> bool:
@@ -1025,6 +1151,49 @@ func _on_dynamic_session_item_pressed(session_id: String) -> void:
 	_open_session(session_id)
 
 
+func _on_session_archive_requested(session_id: String) -> void:
+	if not _is_socket_open() or session_id.is_empty():
+		return
+
+	_send_request("session.archive", { "sessionId": session_id }, "session-archive")
+
+
+func _apply_archived_session_response(result_dictionary: Dictionary) -> void:
+	var metadata_value: Variant = result_dictionary.get("metadata", {})
+	if typeof(metadata_value) != TYPE_DICTIONARY:
+		_refresh_session_and_archive_lists()
+		return
+
+	var metadata: Dictionary = metadata_value as Dictionary
+	var session_id: String = str(metadata.get("id", ""))
+	if not session_id.is_empty():
+		sessions_by_id.erase(session_id)
+		session_ids_in_order.erase(session_id)
+		archived_sessions_by_id[session_id] = metadata
+		if not archived_session_ids_in_order.has(session_id):
+			archived_session_ids_in_order.insert(0, session_id)
+		if active_session_id == session_id:
+			active_session_id = ""
+
+	_render_session_list()
+	_sync_settings_archived_sessions()
+	_refresh_session_and_archive_lists()
+
+
+func _remove_archived_session(session_id: String) -> void:
+	if session_id.is_empty():
+		return
+
+	archived_sessions_by_id.erase(session_id)
+	archived_session_ids_in_order.erase(session_id)
+	_sync_settings_archived_sessions()
+
+
+func _refresh_session_and_archive_lists() -> void:
+	_send_request("session.list", {}, "session-list")
+	_send_request("session.archived.list", {}, "session-archived-list")
+
+
 func _apply_session_metadata(metadata: Dictionary) -> void:
 	active_session_id = str(metadata.get("id", ""))
 	_select_active_session()
@@ -1068,6 +1237,7 @@ func _clear_chat_items() -> void:
 	active_assistant_entry_id = ""
 	active_thinking_entry_id = ""
 	active_stream_request_id = ""
+	active_stream_started_at_utc = ""
 	active_assistant_text = ""
 	pending_assistant_delta_text = ""
 	pending_assistant_delta_queued = false
@@ -1193,6 +1363,7 @@ func _append_session_records_to_timeline(messages_value: Variant, events_value: 
 
 	var consumed_request_ids: Array[String] = []
 	var rendered_orphan_events: bool = false
+	var request_started_at_by_id: Dictionary[String, String] = {}
 
 	for item: Variant in messages:
 		if typeof(item) != TYPE_DICTIONARY:
@@ -1202,9 +1373,12 @@ func _append_session_records_to_timeline(messages_value: Variant, events_value: 
 		var role: String = str(message.get("role", ""))
 		var content: String = str(message.get("content", ""))
 		var request_id: String = str(message.get("requestId", ""))
+		var created_at: String = str(message.get("createdAt", ""))
 
 		if role == "user":
-			_append_timeline_entry("user", request_id, content, _make_message_entry_id(message, role))
+			_append_timeline_entry("user", request_id, content, _make_message_entry_id(message, role), { "sent_at_utc": created_at })
+			if not request_id.is_empty() and not created_at.is_empty():
+				request_started_at_by_id[request_id] = created_at
 			if not request_id.is_empty():
 				_append_events_for_request(request_id, events_by_request_id, consumed_request_ids)
 		elif role == "assistant":
@@ -1213,7 +1387,17 @@ func _append_session_records_to_timeline(messages_value: Variant, events_value: 
 			if not rendered_orphan_events and not orphan_events.is_empty():
 				_append_event_records(orphan_events)
 				rendered_orphan_events = true
-			_append_timeline_entry("assistant", request_id, content, _make_message_entry_id(message, role))
+			var started_at_utc: String = str(request_started_at_by_id.get(request_id, ""))
+			_append_timeline_entry(
+				"assistant",
+				request_id,
+				content,
+				_make_message_entry_id(message, role),
+				{
+					"started_at_utc": started_at_utc,
+					"completed_at_utc": created_at
+				}
+			)
 
 	if not rendered_orphan_events:
 		_append_event_records(orphan_events)
@@ -1318,7 +1502,7 @@ func _append_event_records(records: Array) -> void:
 		_append_event_to_timeline(event_name, data, str(event_record.get("requestId", "")))
 
 
-func _append_timeline_entry(entry_type: String, request_id: String, content: String, preferred_entry_id: String = "") -> String:
+func _append_timeline_entry(entry_type: String, request_id: String, content: String, preferred_entry_id: String = "", metadata: Dictionary = {}) -> String:
 	var entry_id: String = preferred_entry_id
 	if entry_id.is_empty():
 		entry_id = "timeline-%d-%d" % [Time.get_ticks_msec(), timeline_entries.size()]
@@ -1336,6 +1520,8 @@ func _append_timeline_entry(entry_type: String, request_id: String, content: Str
 		"collapsed": false,
 		"tool_call_id": ""
 	}
+	for metadata_key: Variant in metadata.keys():
+		entry[str(metadata_key)] = metadata[metadata_key]
 	timeline_entries.append(entry)
 	timeline_entry_ids[entry_id] = true
 	timeline_heights.append(_get_entry_cached_height(entry))
@@ -1417,6 +1603,23 @@ func _set_timeline_entry_collapsed(entry_id: String, collapsed: bool) -> void:
 
 	var entry: Dictionary = timeline_entries[index]
 	entry["collapsed"] = collapsed
+	timeline_entries[index] = entry
+	_mark_timeline_height_dirty(index)
+
+
+func _set_timeline_entry_times(entry_id: String, started_at_utc: String, completed_at_utc: String) -> void:
+	if entry_id.is_empty():
+		return
+
+	var index: int = _find_timeline_entry_index(entry_id)
+	if index < 0:
+		return
+
+	var entry: Dictionary = timeline_entries[index]
+	if not started_at_utc.strip_edges().is_empty():
+		entry["started_at_utc"] = started_at_utc
+	if not completed_at_utc.strip_edges().is_empty():
+		entry["completed_at_utc"] = completed_at_utc
 	timeline_entries[index] = entry
 	_mark_timeline_height_dirty(index)
 
@@ -1679,9 +1882,11 @@ func _configure_timeline_entry_node(node: Node, entry: Dictionary, _index: int) 
 	var entry_type: String = str(entry.get("type", ""))
 
 	if entry_type == "user":
-		node.call("setup", str(entry.get("content", "")))
+		node.call("setup", str(entry.get("content", "")), str(entry.get("request_id", "")), str(entry.get("sent_at_utc", "")))
+		if node.has_signal("resend_requested"):
+			node.connect("resend_requested", Callable(self, "_on_user_message_resend_requested"))
 	elif entry_type == "assistant":
-		node.call("setup", str(entry.get("content", "")))
+		node.call("setup", str(entry.get("content", "")), str(entry.get("started_at_utc", "")), str(entry.get("completed_at_utc", "")))
 	elif entry_type == "thinking":
 		node.call("setup_thinking")
 		var content: String = str(entry.get("content", ""))
@@ -1836,13 +2041,20 @@ func _scroll_to_bottom_if_following(should_follow_bottom: bool) -> void:
 
 func _add_user_message_item(message_text: String) -> void:
 	var should_follow_bottom: bool = _should_follow_timeline_updates()
-	_append_timeline_entry("user", active_stream_request_id, message_text)
+	var sent_at_utc: String = _get_utc_timestamp()
+	if active_stream_started_at_utc.is_empty():
+		active_stream_started_at_utc = sent_at_utc
+	_append_timeline_entry("user", active_stream_request_id, message_text, "", { "sent_at_utc": sent_at_utc })
 	_schedule_timeline_render(should_follow_bottom)
 
 
 func _add_assistant_message_item(message_text: String) -> void:
 	var should_follow_bottom: bool = _should_follow_timeline_updates()
-	var entry_id: String = _append_timeline_entry("assistant", active_stream_request_id, message_text)
+	var completed_at_utc: String = _get_utc_timestamp()
+	var metadata: Dictionary = { "completed_at_utc": completed_at_utc }
+	if not active_stream_started_at_utc.is_empty():
+		metadata["started_at_utc"] = active_stream_started_at_utc
+	var entry_id: String = _append_timeline_entry("assistant", active_stream_request_id, message_text, "", metadata)
 	active_assistant_entry_id = entry_id
 	_schedule_timeline_render(should_follow_bottom)
 
@@ -1853,7 +2065,10 @@ func _ensure_active_assistant_item() -> void:
 		return
 
 	var should_follow_bottom: bool = _should_follow_timeline_updates()
-	active_assistant_entry_id = _append_timeline_entry("assistant", active_stream_request_id, "")
+	var metadata: Dictionary = {}
+	if not active_stream_started_at_utc.is_empty():
+		metadata["started_at_utc"] = active_stream_started_at_utc
+	active_assistant_entry_id = _append_timeline_entry("assistant", active_stream_request_id, "", "", metadata)
 	_schedule_timeline_render(should_follow_bottom)
 	active_assistant_item = rendered_entry_nodes.get(active_assistant_entry_id, null) as Node
 
@@ -2442,11 +2657,17 @@ func _on_settings_button_pressed() -> void:
 		return
 	
 	var settings_menu: AcceptDialog = packed_scene.instantiate()
+	active_settings_menu = settings_menu
 	add_child(settings_menu)
 	settings_menu.call("setup_provider_config", provider_config_status, _get_frontend_config_snapshot())
+	settings_menu.call("setup_archived_sessions", _get_archived_sessions_snapshot(), _get_workspace_snapshot())
 	settings_menu.connect("provider_config_save_requested", Callable(self, "_on_settings_provider_config_save_requested"))
 	settings_menu.connect("provider_config_clear_requested", Callable(self, "_on_settings_provider_config_clear_requested"))
 	settings_menu.connect("frontend_config_save_requested", Callable(self, "_on_settings_frontend_config_save_requested"))
+	settings_menu.connect("archived_session_restore_requested", Callable(self, "_on_settings_archived_session_restore_requested"))
+	settings_menu.connect("archived_session_delete_requested", Callable(self, "_on_settings_archived_session_delete_requested"))
+	settings_menu.tree_exited.connect(_on_settings_menu_tree_exited.bind(settings_menu))
+	_send_request("session.archived.list", {}, "session-archived-list")
 
 
 func _get_frontend_config_snapshot() -> Dictionary:
@@ -2456,6 +2677,60 @@ func _get_frontend_config_snapshot() -> Dictionary:
 		"approvalMode": _get_selected_approval_mode(),
 		"customInstructions": custom_instructions
 	}
+
+
+func _get_archived_sessions_snapshot() -> Array[Dictionary]:
+	var archived_sessions: Array[Dictionary] = []
+	for session_id: String in archived_session_ids_in_order:
+		var metadata: Dictionary = archived_sessions_by_id.get(session_id, {}) as Dictionary
+		if metadata.is_empty():
+			continue
+
+		archived_sessions.append(metadata.duplicate(true))
+
+	return archived_sessions
+
+
+func _get_workspace_snapshot() -> Array[Dictionary]:
+	var workspaces: Array[Dictionary] = []
+	for workspace_id: String in workspaces_by_id.keys():
+		var workspace: Dictionary = workspaces_by_id.get(workspace_id, {}) as Dictionary
+		if workspace.is_empty():
+			continue
+
+		workspaces.append(workspace.duplicate(true))
+
+	return workspaces
+
+
+func _sync_settings_archived_sessions() -> void:
+	if active_settings_menu == null or not is_instance_valid(active_settings_menu):
+		return
+
+	active_settings_menu.call(
+		"setup_archived_sessions",
+		_get_archived_sessions_snapshot(),
+		_get_workspace_snapshot()
+	)
+
+
+func _on_settings_menu_tree_exited(settings_menu: Node) -> void:
+	if active_settings_menu == settings_menu:
+		active_settings_menu = null
+
+
+func _on_settings_archived_session_restore_requested(session_id: String) -> void:
+	if not _is_socket_open() or session_id.is_empty():
+		return
+
+	_send_request("session.archived.restore", { "sessionId": session_id }, "session-archived-restore")
+
+
+func _on_settings_archived_session_delete_requested(session_id: String) -> void:
+	if not _is_socket_open() or session_id.is_empty():
+		return
+
+	_send_request("session.archived.delete", { "sessionId": session_id }, "session-archived-delete")
 
 
 func _on_settings_provider_config_save_requested(api_key: String) -> void:

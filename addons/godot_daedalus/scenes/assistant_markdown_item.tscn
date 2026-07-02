@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://ddqwn6jrvpdnp" path="res://addons/godot_daedalus/scripts/assistant_markdown_item.gd" id="1_assistant"]
 [ext_resource type="Theme" uid="uid://dhartxld7pqyb" path="res://addons/godot_daedalus/assets/markdown_theme.tres" id="2_g8qxc"]
+[ext_resource type="Texture2D" uid="uid://d1k8gg5h7wvvv" path="res://addons/godot_daedalus/assets/icons/copy.svg" id="3_rhu02"]
 
 [node name="AssistantMarkdownItem" type="MarginContainer" unique_id=6800614]
 offset_right = 711.0
@@ -9,13 +10,49 @@ offset_bottom = 36.0
 theme_override_constants/margin_right = 16
 script = ExtResource("1_assistant")
 
-[node name="MarkdownLabel" type="MarkdownLabel" parent="." unique_id=532096732]
+[node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=772065988]
+layout_mode = 2
+
+[node name="HeaderContainer" type="VBoxContainer" parent="VBoxContainer" unique_id=600921039]
+layout_mode = 2
+theme_override_constants/separation = -4
+
+[node name="ElapsedTimeLabel" type="Label" parent="VBoxContainer/HeaderContainer" unique_id=582881627]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Elapsed: {Time}"
+
+[node name="HSeparator" type="HSeparator" parent="VBoxContainer/HeaderContainer" unique_id=1508385575]
+layout_mode = 2
+
+[node name="MarkdownLabel" type="MarkdownLabel" parent="VBoxContainer" unique_id=532096732]
 text = "Assistant Markdown"
 content_margin = 8
 context_menu_enabled = true
 streaming_enabled = true
 deferred_layout_enabled = true
-layout_flush_interval_msec = 33
 fit_content = true
+unique_name_in_owner = true
 layout_mode = 2
 theme = ExtResource("2_g8qxc")
+
+[node name="FooterContainer" type="HBoxContainer" parent="VBoxContainer" unique_id=120999232]
+unique_name_in_owner = true
+modulate = Color(1, 1, 1, 0)
+layout_mode = 2
+
+[node name="CopyButton" type="Button" parent="VBoxContainer/FooterContainer" unique_id=8268239]
+layout_mode = 2
+tooltip_text = "Copy"
+mouse_filter = 1
+theme_type_variation = &"FlatButton"
+icon = ExtResource("3_rhu02")
+
+[node name="EndTimeLabel" type="Label" parent="VBoxContainer/FooterContainer" unique_id=2103199400]
+unique_name_in_owner = true
+layout_mode = 2
+text = "End Time"
+
+[connection signal="mouse_entered" from="." to="." method="_on_mouse_entered"]
+[connection signal="mouse_exited" from="." to="." method="_on_mouse_exited"]
+[connection signal="pressed" from="VBoxContainer/FooterContainer/CopyButton" to="." method="_on_copy_button_pressed"]

@@ -2,6 +2,9 @@
 
 [ext_resource type="Script" uid="uid://d35rn4f73pi5v" path="res://addons/godot_daedalus/scripts/user_message_item.gd" id="1_user"]
 [ext_resource type="Theme" uid="uid://dhartxld7pqyb" path="res://addons/godot_daedalus/assets/markdown_theme.tres" id="2_cop0j"]
+[ext_resource type="Texture2D" uid="uid://d1k8gg5h7wvvv" path="res://addons/godot_daedalus/assets/icons/copy.svg" id="3_sdysb"]
+[ext_resource type="Texture2D" uid="uid://pj7m0o4eos6a" path="res://addons/godot_daedalus/assets/icons/edit.svg" id="4_5ojoj"]
+[ext_resource type="Texture2D" uid="uid://bdxjmg64dahx3" path="res://addons/godot_daedalus/assets/icons/send.svg" id="5_4n5ck"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_vp1j8"]
 bg_color = Color(0.3735, 0.6321833, 0.83, 0.49019608)
@@ -11,19 +14,90 @@ corner_radius_bottom_right = 3
 corner_radius_bottom_left = 3
 corner_detail = 5
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_5ojoj"]
+content_margin_left = 8.0
+content_margin_top = 4.0
+content_margin_right = 8.0
+content_margin_bottom = 4.0
+draw_center = false
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_4n5ck"]
+content_margin_left = 8.0
+content_margin_top = 4.0
+content_margin_right = 8.0
+content_margin_bottom = 4.0
+draw_center = false
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_36hrw"]
+content_margin_left = 8.0
+content_margin_top = 4.0
+content_margin_right = 8.0
+content_margin_bottom = 4.0
+draw_center = false
+
 [node name="UserMessageItem" type="MarginContainer" unique_id=900495289]
 theme_override_constants/margin_left = 16
 script = ExtResource("1_user")
 
-[node name="PanelContainer" type="PanelContainer" parent="." unique_id=291270553]
+[node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=602757192]
+layout_mode = 2
+
+[node name="PanelContainer" type="PanelContainer" parent="VBoxContainer" unique_id=291270553]
 custom_minimum_size = Vector2(256, 0)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_vp1j8")
 
-[node name="UserMessageLabel" type="MarkdownLabel" parent="PanelContainer" unique_id=1497169051]
+[node name="UserMessageLabel" type="MarkdownLabel" parent="VBoxContainer/PanelContainer" unique_id=1497169051]
 text = "User Message"
 content_margin = 8
 context_menu_enabled = true
 fit_content = true
+unique_name_in_owner = true
 layout_mode = 2
 theme = ExtResource("2_cop0j")
+
+[node name="TextEdit" type="TextEdit" parent="VBoxContainer/PanelContainer" unique_id=1301142014]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_5ojoj")
+theme_override_styles/focus = SubResource("StyleBoxFlat_4n5ck")
+theme_override_styles/read_only = SubResource("StyleBoxFlat_36hrw")
+
+[node name="FooterContainer" type="HBoxContainer" parent="VBoxContainer" unique_id=893017088]
+unique_name_in_owner = true
+modulate = Color(1, 1, 1, 0)
+layout_mode = 2
+alignment = 2
+
+[node name="SendTimeLabel" type="Label" parent="VBoxContainer/FooterContainer" unique_id=197065386]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelNoMargin"
+text = "Send Time"
+
+[node name="CopyButton" type="Button" parent="VBoxContainer/FooterContainer" unique_id=2090909655]
+layout_mode = 2
+tooltip_text = "Copy"
+mouse_filter = 1
+theme_type_variation = &"FlatButton"
+icon = ExtResource("3_sdysb")
+
+[node name="EditButton" type="Button" parent="VBoxContainer/FooterContainer" unique_id=2122961348]
+layout_mode = 2
+tooltip_text = "Edit"
+mouse_filter = 1
+theme_type_variation = &"FlatButton"
+icon = ExtResource("4_5ojoj")
+
+[node name="SendButton" type="Button" parent="VBoxContainer/FooterContainer" unique_id=1499827016]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"FlatButton"
+icon = ExtResource("5_4n5ck")
+
+[connection signal="mouse_entered" from="." to="." method="_on_mouse_entered"]
+[connection signal="mouse_exited" from="." to="." method="_on_mouse_exited"]
+[connection signal="pressed" from="VBoxContainer/FooterContainer/CopyButton" to="." method="_on_copy_button_pressed"]
+[connection signal="pressed" from="VBoxContainer/FooterContainer/EditButton" to="." method="_on_edit_button_pressed"]
+[connection signal="pressed" from="VBoxContainer/FooterContainer/SendButton" to="." method="_on_send_button_pressed"]

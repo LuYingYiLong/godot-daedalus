@@ -2,8 +2,8 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bcpbhwc0oat32"
-path="res://.godot/imported/empty_context_length.svg-d29dfc0f9924100cf4a59a3b62e2e87c.ctex"
+uid="uid://d1k8gg5h7wvvv"
+path="res://.godot/imported/copy.svg-22a6affb55bf1c9efc9b7e796531febe.ctex"
 metadata={
 "has_editor_variant": true,
 "vram_texture": false
@@ -11,8 +11,8 @@ metadata={
 
 [deps]
 
-source_file="res://addons/godot_daedalus/assets/icons/empty_context_length.svg"
-dest_files=["res://.godot/imported/empty_context_length.svg-d29dfc0f9924100cf4a59a3b62e2e87c.ctex"]
+source_file="res://addons/godot_daedalus/assets/icons/copy.svg"
+dest_files=["res://.godot/imported/copy.svg-22a6affb55bf1c9efc9b7e796531febe.ctex"]
 
 [params]
 

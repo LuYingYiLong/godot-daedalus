@@ -12,16 +12,6 @@ script = ExtResource("1_status")
 [node name="MainContainer" type="HBoxContainer" parent="." unique_id=186847856]
 layout_mode = 2
 
-[node name="StatusIcon" type="TextureRect" parent="MainContainer" unique_id=1425659619]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(16, 16)
-layout_mode = 2
-size_flags_horizontal = 4
-size_flags_vertical = 0
-texture = ExtResource("2_g7c3b")
-expand_mode = 3
-stretch_mode = 5
-
 [node name="TextContainer" type="VBoxContainer" parent="MainContainer" unique_id=850813598]
 layout_mode = 2
 size_flags_horizontal = 3
@@ -29,11 +19,22 @@ size_flags_horizontal = 3
 [node name="HeaderContainer" type="HBoxContainer" parent="MainContainer/TextContainer" unique_id=1106492126]
 layout_mode = 2
 
+[node name="StatusIcon" type="TextureRect" parent="MainContainer/TextContainer/HeaderContainer" unique_id=1425659619]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(16, 16)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+texture = ExtResource("2_g7c3b")
+expand_mode = 3
+stretch_mode = 5
+
 [node name="TitleLabel" type="Label" parent="MainContainer/TextContainer/HeaderContainer" unique_id=503521128]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_type_variation = &"HeaderSmall"
+text = "Title"
 text_overrun_behavior = 3
 
 [node name="ActionButton" type="Button" parent="MainContainer/TextContainer/HeaderContainer" unique_id=383824315]
@@ -50,6 +51,7 @@ unique_name_in_owner = true
 visible = false
 custom_minimum_size = Vector2(64, 0)
 layout_mode = 2
+text = "Details"
 autowrap_mode = 3
 
 [connection signal="pressed" from="MainContainer/TextContainer/HeaderContainer/ActionButton" to="." method="_on_action_button_pressed"]

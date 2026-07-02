@@ -40,6 +40,7 @@ func setup(tool_name_text: String, detail_text: String) -> void:
 	tool_name = str(display_event.get("toolName", tool_name_text))
 	foldable_container.title = _format_foldable_title(display_event)
 	_add_unknown_item(str(display_event.get("title", _localize_tool_name(tool_name))), str(display_event.get("summary", detail_text)))
+	_set_folded(true)
 
 
 func setup_tool_event(event_data: Dictionary) -> void:
@@ -53,6 +54,7 @@ func setup_tool_event(event_data: Dictionary) -> void:
 		child.queue_free()
 
 	_add_item_for_event(display_event)
+	_set_folded(true)
 
 
 func setup_thinking() -> void:
@@ -64,6 +66,8 @@ func setup_thinking() -> void:
 		child.queue_free()
 
 	_add_thinking_summary_item()
+	_ensure_thinking_markdown_item()
+	_set_folded(true)
 
 
 func append_tool_event(event_data: Dictionary) -> void:
@@ -71,10 +75,8 @@ func append_tool_event(event_data: Dictionary) -> void:
 	var event_type: String = str(display_event.get("type", ""))
 	if event_type == "tool.result":
 		_add_result_item(display_event)
-		_set_folded(true)
 	elif event_type == "tool.error":
 		_add_error_item(display_event)
-		_set_folded(true)
 	elif event_type == "tool.approval_required":
 		_add_approval_item(display_event)
 	else:
@@ -94,6 +96,7 @@ func append_thinking_delta(text: String) -> void:
 	_update_thinking_summary()
 	if thinking_markdown_loaded and thinking_markdown_label != null:
 		thinking_markdown_label.append_text(text)
+	content_height_changed.emit()
 
 
 func finish_thinking() -> void:
@@ -101,7 +104,6 @@ func finish_thinking() -> void:
 	_update_thinking_summary()
 	if thinking_markdown_loaded and thinking_markdown_label != null:
 		thinking_markdown_label.finish_stream()
-	_set_folded(true)
 
 
 func _set_folded(is_folded: bool) -> void:
@@ -228,13 +230,21 @@ func _update_thinking_summary() -> void:
 	var status_text: String = "已完成" if thinking_finished else "思考中"
 	thinking_summary_label.text = "%s · %d 字符" % [status_text, thinking_text.length()]
 	if thinking_show_button != null:
-		thinking_show_button.visible = thinking_text.length() > 0
+		thinking_show_button.visible = thinking_text.length() > 0 and not thinking_markdown_loaded
 		thinking_show_button.disabled = thinking_markdown_loaded
 		thinking_show_button.text = "已显示" if thinking_markdown_loaded else "查看"
 
 
 func _on_show_thinking_button_pressed() -> void:
 	if thinking_markdown_loaded:
+		return
+
+	_ensure_thinking_markdown_item()
+	content_height_changed.emit()
+
+
+func _ensure_thinking_markdown_item() -> void:
+	if thinking_markdown_loaded and thinking_markdown_label != null:
 		return
 
 	thinking_markdown_loaded = true
@@ -249,7 +259,6 @@ func _on_show_thinking_button_pressed() -> void:
 			label.finish_stream()
 		thinking_markdown_label = label
 	_update_thinking_summary()
-	content_height_changed.emit()
 
 
 func _add_result_item(event_data: Dictionary) -> void:

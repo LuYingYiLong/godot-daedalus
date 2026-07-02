@@ -37,6 +37,13 @@ const SESSION_OPEN_MESSAGE_LIMIT: int = 80
 const APPROVAL_ARGS_PREVIEW_LIMIT: int = 4000
 const DELTA_FLUSH_INTERVAL_MSEC: int = 45
 const TIMELINE_MEASURE_INTERVAL_MSEC: int = 240
+const MAX_QUEUED_MESSAGES: int = 12
+const MESSAGE_QUEUE_STATUS_PENDING: StringName = &"pending"
+const MESSAGE_QUEUE_STATUS_SENDING: StringName = &"sending"
+const MESSAGE_QUEUE_STATUS_APPROVAL: StringName = &"approval"
+const MESSAGE_QUEUE_STATUS_FAILED: StringName = &"failed"
+const MESSAGE_QUEUE_STATUS_CANCELLED: StringName = &"cancelled"
+const MESSAGE_QUEUE_STATUS_REJECTED: StringName = &"rejected"
 
 const MODEL_IDS: Array[String] = [
 	"deepseek-v4-flash",
@@ -83,6 +90,8 @@ const APPROVAL_MODE_IDS: Array[String] = [
 @onready var boot_splash: CenterContainer = %BootSplash
 @onready var todo_list: FoldableContainer = %TodoList
 @onready var todo_container: VBoxContainer = %TodoContainer
+@onready var message_queue_panel: PanelContainer = %MessageQueue
+@onready var message_tree: Tree = %MessageTree
 
 var socket: WebSocketPeer = WebSocketPeer.new()
 var socket_ready: bool
@@ -154,6 +163,9 @@ var backend_url: String = DEFAULT_BACKEND_URL
 var custom_instructions: String
 var pending_provider_config_api_key: String
 var pending_provider_config_save_after_connect: bool
+var queued_messages: Array[Dictionary] = []
+var message_queue_next_id: int
+var active_queue_message_id: int
 
 
 func _ready() -> void:
@@ -165,6 +177,8 @@ func _ready() -> void:
 	_load_frontend_config()
 	_setup_timeline_containers()
 	_connect_timeline_signals()
+	_setup_message_tree()
+	_render_message_panel()
 	_clear_template_items()
 	_update_send_state()
 	_set_context_length_icon(0.0, true)
@@ -318,6 +332,96 @@ func _connect_timeline_signals() -> void:
 		vertical_scroll_bar.value_changed.connect(_on_timeline_scroll_value_changed)
 
 
+func _setup_message_tree() -> void:
+	message_tree.columns = 2
+	message_tree.column_titles_visible = true
+	message_tree.hide_root = true
+	message_tree.set_column_title(0, "Status")
+	message_tree.set_column_title(1, "Message")
+
+
+func _render_message_panel() -> void:
+	if message_queue_panel == null or message_tree == null:
+		return
+
+	var should_show_panel: bool = background_context_viewer.visible and not queued_messages.is_empty()
+	message_queue_panel.visible = should_show_panel
+	if not should_show_panel:
+		message_tree.clear()
+		return
+
+	message_tree.clear()
+	var root_item: TreeItem = message_tree.create_item()
+
+	for queued_message: Dictionary in queued_messages:
+		var queue_item: TreeItem = message_tree.create_item(root_item)
+		var metadata: Dictionary = {
+			"kind": "queue",
+			"id": int(queued_message.get("id", 0)),
+			"status": str(queued_message.get("status", MESSAGE_QUEUE_STATUS_PENDING)),
+			"message": str(queued_message.get("text", ""))
+		}
+		queue_item.set_text(0, _format_queue_status(str(queued_message.get("status", MESSAGE_QUEUE_STATUS_PENDING))))
+		queue_item.set_text(1, _format_message_preview(str(queued_message.get("text", ""))))
+		queue_item.set_tooltip_text(1, str(queued_message.get("text", "")))
+		queue_item.set_metadata(0, metadata)
+		queue_item.set_metadata(1, metadata)
+
+
+func _format_queue_status(status: String) -> String:
+	if status == str(MESSAGE_QUEUE_STATUS_PENDING):
+		return "Queued"
+	if status == str(MESSAGE_QUEUE_STATUS_SENDING):
+		return "Sending"
+	if status == str(MESSAGE_QUEUE_STATUS_APPROVAL):
+		return "Approval"
+	if status == str(MESSAGE_QUEUE_STATUS_CANCELLED):
+		return "Stopped"
+	if status == str(MESSAGE_QUEUE_STATUS_REJECTED):
+		return "Rejected"
+	if status == str(MESSAGE_QUEUE_STATUS_FAILED):
+		return "Failed"
+
+	return status.capitalize()
+
+
+func _format_message_preview(message_text: String) -> String:
+	var preview_text: String = message_text.replace("\n", " ").strip_edges()
+	if preview_text.length() > 96:
+		return preview_text.substr(0, 96) + "..."
+
+	return preview_text
+
+
+func _on_message_tree_item_activated() -> void:
+	var selected_item: TreeItem = message_tree.get_selected()
+	if selected_item == null:
+		return
+
+	var metadata_value: Variant = selected_item.get_metadata(0)
+	if typeof(metadata_value) != TYPE_DICTIONARY:
+		return
+
+	var metadata: Dictionary = metadata_value as Dictionary
+	var item_kind: String = str(metadata.get("kind", ""))
+	if item_kind != "queue":
+		return
+
+	var queue_status: String = str(metadata.get("status", ""))
+	if queue_status == str(MESSAGE_QUEUE_STATUS_PENDING) and active_stream_id.is_empty():
+		_process_message_queue()
+		return
+
+	var queued_message_text: String = str(metadata.get("message", ""))
+	if not queued_message_text.is_empty():
+		text_edit.text = queued_message_text
+		text_edit.grab_focus()
+
+
+func _on_text_edit_text_changed() -> void:
+	_update_send_state()
+
+
 func _on_timeline_scroll_value_changed(_value: float) -> void:
 	timeline_follow_bottom = _is_timeline_near_bottom()
 	if not timeline_follow_bottom:
@@ -431,6 +535,8 @@ func _on_socket_opened() -> void:
 		_load_provider_config()
 	_apply_approval_mode_to_backend()
 	_refresh_session_and_archive_lists()
+	if not was_recovering or session_id_to_restore.is_empty():
+		_process_message_queue()
 	if was_recovering:
 		_upsert_connection_status_entry(
 			"success",
@@ -471,6 +577,8 @@ func _begin_backend_recovery(close_detail: String, session_id_to_restore: String
 	pending_recovery_status_after_session_open = false
 	var details: String = "%s\n正在自动重连 Daedalus 后端。" % close_detail
 	if was_streaming:
+		if active_queue_message_id > 0:
+			_finish_active_queue_message(false, MESSAGE_QUEUE_STATUS_FAILED)
 		_stop_active_stream_locally(true)
 		details += "\n当前回复已在本地暂停；恢复后可以直接发送“继续”。"
 	_upsert_connection_status_entry("warning", "连接中断", details)
@@ -494,6 +602,7 @@ func _finalize_recovery_status(session_restored: bool) -> void:
 		details += "\n当前会话已恢复；如果上一条回复被中断，可以继续发送。"
 	_upsert_connection_status_entry("success", "连接已恢复", details)
 	connection_status_entry_id = ""
+	_process_message_queue()
 
 
 func _on_status_item_action_requested(action_id: String) -> void:
@@ -564,6 +673,7 @@ func _show_session_list_viewer() -> void:
 	search_session_line_edit.show()
 	session_option_button.hide()
 	context_length_button.hide()
+	_render_message_panel()
 
 
 func _show_background_context_viewer() -> void:
@@ -573,9 +683,11 @@ func _show_background_context_viewer() -> void:
 	search_session_line_edit.hide()
 	session_option_button.show()
 	context_length_button.show()
+	_render_message_panel()
 
 
 func _on_create_new_session_button_pressed() -> void:
+	_clear_message_queue()
 	_create_session("New session " + Time.get_datetime_string_from_system(false, true))
 
 
@@ -607,14 +719,19 @@ func _on_approval_mode_button_item_selected(index: int) -> void:
 func _on_send_button_pressed() -> void:
 	var message_text: String = text_edit.text.strip_edges()
 	if message_text.is_empty():
+		_process_message_queue()
 		return
 
-	if active_session_id.is_empty():
-		pending_chat_text = message_text
-		_create_session(_make_session_title(message_text))
+	if _should_queue_outgoing_message():
+		if _enqueue_message(message_text):
+			text_edit.clear()
+			_update_send_state()
+			_process_message_queue()
 		return
 
-	_send_chat_text(message_text)
+	if _dispatch_message_text(message_text) and active_session_id.is_empty():
+		text_edit.clear()
+		_update_send_state()
 
 
 func _on_user_message_resend_requested(request_id_to_retry: String, message_text: String) -> void:
@@ -669,6 +786,8 @@ func _on_stop_button_pressed() -> void:
 
 	var request_id_to_cancel: String = active_stream_id
 	_send_request("ai.cancel", { "requestId": request_id_to_cancel }, "ai-cancel")
+	if active_queue_message_id > 0:
+		_finish_active_queue_message(false, MESSAGE_QUEUE_STATUS_CANCELLED)
 	_stop_active_stream_locally(true)
 
 
@@ -699,6 +818,8 @@ func _on_approve_button_pressed() -> void:
 	if pending_approval_id.is_empty():
 		return
 
+	if active_queue_message_id > 0:
+		_set_queue_message_status(active_queue_message_id, MESSAGE_QUEUE_STATUS_SENDING)
 	var should_follow_bottom: bool = _should_follow_timeline_updates()
 	active_stream_id = _send_request("approval.approve", { "approvalId": pending_approval_id }, "approval-approve")
 	active_stream_request_id = active_stream_id
@@ -738,12 +859,26 @@ func _open_session(session_id: String) -> void:
 	if not _is_socket_open():
 		return
 
+	if session_id != active_session_id:
+		_clear_message_queue()
 	_send_request("session.open", { "sessionId": session_id, "limit": SESSION_OPEN_MESSAGE_LIMIT }, "session-open")
 
 
-func _send_chat_text(message_text: String, retry_from_request_id: String = "") -> void:
+func _dispatch_message_text(message_text: String) -> bool:
 	if not _is_socket_open():
-		return
+		return false
+
+	if active_session_id.is_empty():
+		pending_chat_text = message_text
+		_create_session(_make_session_title(message_text))
+		return true
+
+	return _send_chat_text(message_text)
+
+
+func _send_chat_text(message_text: String, retry_from_request_id: String = "") -> bool:
+	if not _is_socket_open():
+		return false
 
 	_show_background_context_viewer()
 
@@ -788,11 +923,141 @@ func _send_chat_text(message_text: String, retry_from_request_id: String = "") -
 		active_stream_started_at_utc = ""
 		active_assistant_item = null
 		_set_streaming_state(false)
-		return
+		if active_queue_message_id > 0:
+			_finish_active_queue_message(false, MESSAGE_QUEUE_STATUS_FAILED)
+		return false
 
 	_scroll_to_bottom_if_following(should_follow_bottom)
 	text_edit.clear()
 	_set_streaming_state(true)
+	return true
+
+
+func _should_queue_outgoing_message() -> bool:
+	return (
+		not _is_socket_open()
+		or not active_stream_id.is_empty()
+		or not pending_approval_id.is_empty()
+		or not pending_chat_text.is_empty()
+		or _has_pending_queued_messages()
+	)
+
+
+func _enqueue_message(message_text: String) -> bool:
+	if _get_open_queue_count() >= MAX_QUEUED_MESSAGES:
+		_upsert_connection_status_entry(
+			"warning",
+			"消息队列已满",
+			"最多保留 %d 条待发送消息。请等待当前队列消化后再继续添加。" % MAX_QUEUED_MESSAGES
+		)
+		return false
+
+	message_queue_next_id += 1
+	var queued_message: Dictionary = {
+		"id": message_queue_next_id,
+		"text": message_text,
+		"status": MESSAGE_QUEUE_STATUS_PENDING,
+		"created_at_utc": _get_utc_timestamp()
+	}
+	queued_messages.append(queued_message)
+	_show_background_context_viewer()
+	_render_message_panel()
+	_update_send_state()
+	return true
+
+
+func _process_message_queue() -> void:
+	if not _can_dispatch_queued_message():
+		_render_message_panel()
+		return
+
+	var queued_index: int = _find_next_pending_queue_index()
+	if queued_index < 0:
+		_render_message_panel()
+		return
+
+	var queued_message: Dictionary = queued_messages[queued_index]
+	active_queue_message_id = int(queued_message.get("id", 0))
+	queued_message["status"] = MESSAGE_QUEUE_STATUS_SENDING
+	queued_messages[queued_index] = queued_message
+	_render_message_panel()
+
+	var queued_text: String = str(queued_message.get("text", ""))
+	if not _dispatch_message_text(queued_text):
+		_finish_active_queue_message(false, MESSAGE_QUEUE_STATUS_FAILED)
+		_process_message_queue()
+
+
+func _can_dispatch_queued_message() -> bool:
+	return (
+		_is_socket_open()
+		and active_stream_id.is_empty()
+		and pending_approval_id.is_empty()
+		and pending_chat_text.is_empty()
+	)
+
+
+func _has_pending_queued_messages() -> bool:
+	return _find_next_pending_queue_index() >= 0
+
+
+func _find_next_pending_queue_index() -> int:
+	for index: int in range(queued_messages.size()):
+		var queued_message: Dictionary = queued_messages[index]
+		if str(queued_message.get("status", MESSAGE_QUEUE_STATUS_PENDING)) == str(MESSAGE_QUEUE_STATUS_PENDING):
+			return index
+
+	return -1
+
+
+func _get_open_queue_count() -> int:
+	var open_count: int = 0
+	for queued_message: Dictionary in queued_messages:
+		var status: String = str(queued_message.get("status", MESSAGE_QUEUE_STATUS_PENDING))
+		if status == str(MESSAGE_QUEUE_STATUS_PENDING) or status == str(MESSAGE_QUEUE_STATUS_SENDING) or status == str(MESSAGE_QUEUE_STATUS_APPROVAL):
+			open_count += 1
+
+	return open_count
+
+
+func _set_queue_message_status(queue_message_id: int, status: StringName) -> void:
+	for index: int in range(queued_messages.size()):
+		var queued_message: Dictionary = queued_messages[index]
+		if int(queued_message.get("id", 0)) != queue_message_id:
+			continue
+
+		queued_message["status"] = status
+		queued_messages[index] = queued_message
+		_render_message_panel()
+		return
+
+
+func _finish_active_queue_message(remove_message: bool, final_status: StringName = MESSAGE_QUEUE_STATUS_FAILED) -> void:
+	if active_queue_message_id <= 0:
+		return
+
+	var finished_queue_message_id: int = active_queue_message_id
+	active_queue_message_id = 0
+	if remove_message:
+		_remove_queue_message(finished_queue_message_id)
+	else:
+		_set_queue_message_status(finished_queue_message_id, final_status)
+	_render_message_panel()
+
+
+func _remove_queue_message(queue_message_id: int) -> void:
+	for index: int in range(queued_messages.size()):
+		var queued_message: Dictionary = queued_messages[index]
+		if int(queued_message.get("id", 0)) == queue_message_id:
+			queued_messages.remove_at(index)
+			return
+
+
+func _clear_message_queue() -> void:
+	queued_messages.clear()
+	active_queue_message_id = 0
+	_render_message_panel()
+	_update_send_state()
 
 
 func _make_session_title(message_text: String) -> String:
@@ -878,6 +1143,10 @@ func _handle_response(message: Dictionary) -> void:
 			context_popup_open_after_info = false
 		if str(message.get("id", "")).begins_with("session-timeline"):
 			timeline_loading_before = false
+		if str(message.get("id", "")).begins_with("session-create") and active_queue_message_id > 0:
+			pending_chat_text = ""
+			_finish_active_queue_message(false, MESSAGE_QUEUE_STATUS_FAILED)
+			_process_message_queue()
 		if str(message.get("id", "")).begins_with("session-recover-open"):
 			pending_recovery_status_after_session_open = false
 			restore_session_after_reconnect_id = ""
@@ -890,11 +1159,14 @@ func _handle_response(message: Dictionary) -> void:
 			return
 		if str(message.get("id", "")) == active_stream_id:
 			_show_response_error(message)
+			if active_queue_message_id > 0:
+				_finish_active_queue_message(false, MESSAGE_QUEUE_STATUS_FAILED)
 			active_stream_id = ""
 			active_stream_started_at_utc = ""
 			active_assistant_item = null
 			active_assistant_text = ""
 			_set_streaming_state(false)
+			_process_message_queue()
 		else:
 			_show_background_context_viewer()
 			_show_response_error(message)
@@ -922,7 +1194,9 @@ func _handle_response(message: Dictionary) -> void:
 		if not pending_chat_text.is_empty():
 			var next_message: String = pending_chat_text
 			pending_chat_text = ""
-			_send_chat_text(next_message)
+			if not _send_chat_text(next_message) and active_queue_message_id > 0:
+				_finish_active_queue_message(false, MESSAGE_QUEUE_STATUS_FAILED)
+				_process_message_queue()
 	elif bool(result_dictionary.get("opened", false)) and str(message.get("id", "")).begins_with("session-recover-open"):
 		_handle_recovered_session_open(result_dictionary)
 	elif bool(result_dictionary.get("opened", false)):
@@ -970,7 +1244,12 @@ func _handle_response(message: Dictionary) -> void:
 	elif bool(result_dictionary.get("deletedArchived", false)):
 		_remove_archived_session(str(result_dictionary.get("sessionId", "")))
 	elif bool(result_dictionary.get("approved", false)) or bool(result_dictionary.get("rejected", false)):
+		var was_rejected: bool = bool(result_dictionary.get("rejected", false))
 		pending_approval_id = ""
+		_update_send_state()
+		if was_rejected and active_queue_message_id > 0:
+			_finish_active_queue_message(false, MESSAGE_QUEUE_STATUS_REJECTED)
+			_process_message_queue()
 		_send_request("session.info", {}, "session-info")
 
 
@@ -1011,6 +1290,8 @@ func _handle_event(message: Dictionary) -> void:
 		_set_streaming_state(false)
 		_send_request("session.save", {}, "session-save")
 		_send_request("session.info", {}, "session-info")
+		_finish_active_queue_message(true)
+		_process_message_queue()
 	elif event_name == "ai.paused":
 		var should_follow_bottom: bool = _should_follow_timeline_updates()
 		_flush_pending_assistant_delta()
@@ -1025,6 +1306,8 @@ func _handle_event(message: Dictionary) -> void:
 		active_assistant_text = ""
 		_set_streaming_state(false)
 		if str(data_dictionary.get("approvalId", "")).length() > 0:
+			if active_queue_message_id > 0:
+				_set_queue_message_status(active_queue_message_id, MESSAGE_QUEUE_STATUS_APPROVAL)
 			_show_approval_dialog(data_dictionary)
 	elif event_name == "ai.cancelled":
 		_stop_active_stream_locally(false)
@@ -1033,7 +1316,8 @@ func _handle_event(message: Dictionary) -> void:
 	elif event_name == "ai.thinking.done":
 		var should_follow_bottom: bool = _should_follow_timeline_updates()
 		_flush_pending_thinking_delta()
-		_set_timeline_entry_collapsed(active_thinking_entry_id, true)
+		if not active_assistant_entry_id.is_empty():
+			_append_assistant_thinking_to_timeline(active_assistant_entry_id, "", true)
 		if active_thinking_item != null:
 			active_thinking_item.call("finish_thinking")
 			_schedule_timeline_render(should_follow_bottom)
@@ -1049,8 +1333,15 @@ func _handle_event(message: Dictionary) -> void:
 		_add_tool_event(data_dictionary)
 		_show_approval_dialog(data_dictionary)
 	elif event_name == "tool.approved" or event_name == "tool.rejected":
+		var tool_was_rejected: bool = event_name == "tool.rejected"
 		pending_approval_id = ""
 		approval_dialog.visible = false
+		_update_send_state()
+		if tool_was_rejected and active_queue_message_id > 0:
+			_finish_active_queue_message(false, MESSAGE_QUEUE_STATUS_REJECTED)
+			_process_message_queue()
+		elif active_queue_message_id > 0:
+			_set_queue_message_status(active_queue_message_id, MESSAGE_QUEUE_STATUS_SENDING)
 	elif event_name == "workflow.started":
 		active_workflow_id = str(data_dictionary.get("workflowId", ""))
 	elif event_name == "workflow.todo.updated":
@@ -1312,6 +1603,7 @@ func _refresh_session_and_archive_lists() -> void:
 func _apply_session_metadata(metadata: Dictionary) -> void:
 	active_session_id = str(metadata.get("id", ""))
 	_select_active_session()
+	_render_message_panel()
 
 
 func _apply_provider_config_status(status: Dictionary) -> void:
@@ -1379,6 +1671,7 @@ func _clear_chat_items() -> void:
 	timeline_top_spacer.custom_minimum_size = Vector2(0.0, 0.0)
 	timeline_bottom_spacer.custom_minimum_size = Vector2(0.0, 0.0)
 	_set_context_length_icon(0.0, true)
+	_render_message_panel()
 
 
 func _render_session_timeline(messages_value: Variant, events_value: Variant, page_info: Dictionary) -> void:
@@ -1387,6 +1680,7 @@ func _render_session_timeline(messages_value: Variant, events_value: Variant, pa
 	timeline_loading_before = false
 	_append_session_records_to_timeline(messages_value, events_value)
 	active_thinking_item = null
+	active_thinking_entry_id = ""
 	_rebuild_timeline_index_cache()
 	_rebuild_timeline_height_cache()
 	_render_visible_timeline(true)
@@ -1473,6 +1767,7 @@ func _append_session_records_to_timeline(messages_value: Variant, events_value: 
 		messages = messages_value as Array
 
 	var message_request_ids: Dictionary[String, bool] = _collect_message_request_ids(messages)
+	var assistant_request_ids: Dictionary[String, bool] = _collect_message_request_ids_for_role(messages, "assistant")
 	var events_by_request_id: Dictionary[String, Array] = {}
 	var orphan_events: Array[Dictionary] = []
 	_collect_session_events(events_value, message_request_ids, events_by_request_id, orphan_events)
@@ -1495,11 +1790,18 @@ func _append_session_records_to_timeline(messages_value: Variant, events_value: 
 			_append_timeline_entry("user", request_id, content, _make_message_entry_id(message, role), { "sent_at_utc": created_at })
 			if not request_id.is_empty() and not created_at.is_empty():
 				request_started_at_by_id[request_id] = created_at
-			if not request_id.is_empty():
+			if not request_id.is_empty() and not assistant_request_ids.has(request_id):
 				_append_events_for_request(request_id, events_by_request_id, consumed_request_ids)
 		elif role == "assistant":
+			var body_parts: Array[Dictionary] = []
 			if not request_id.is_empty():
-				_append_events_for_request(request_id, events_by_request_id, consumed_request_ids)
+				var request_records: Array = events_by_request_id.get(request_id, []) as Array
+				_append_event_records(_filter_non_assistant_body_event_records(request_records))
+				body_parts = _build_assistant_body_parts(request_records, content, request_id)
+				if not consumed_request_ids.has(request_id):
+					consumed_request_ids.append(request_id)
+			else:
+				body_parts = _build_assistant_body_parts([], content, request_id)
 			if not rendered_orphan_events and not orphan_events.is_empty():
 				_append_event_records(orphan_events)
 				rendered_orphan_events = true
@@ -1511,7 +1813,8 @@ func _append_session_records_to_timeline(messages_value: Variant, events_value: 
 				_make_message_entry_id(message, role),
 				{
 					"started_at_utc": started_at_utc,
-					"completed_at_utc": created_at
+					"completed_at_utc": created_at,
+					"body_parts": body_parts
 				}
 			)
 
@@ -1541,6 +1844,23 @@ func _collect_message_request_ids(messages: Array) -> Dictionary[String, bool]:
 			continue
 
 		var message: Dictionary = item as Dictionary
+		var request_id: String = str(message.get("requestId", ""))
+		if not request_id.is_empty():
+			ids[request_id] = true
+
+	return ids
+
+
+func _collect_message_request_ids_for_role(messages: Array, target_role: String) -> Dictionary[String, bool]:
+	var ids: Dictionary[String, bool] = {}
+	for item: Variant in messages:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var message: Dictionary = item as Dictionary
+		if str(message.get("role", "")) != target_role:
+			continue
+
 		var request_id: String = str(message.get("requestId", ""))
 		if not request_id.is_empty():
 			ids[request_id] = true
@@ -1616,6 +1936,128 @@ func _append_event_records(records: Array) -> void:
 		data["_eventRecordId"] = str(event_record.get("id", ""))
 
 		_append_event_to_timeline(event_name, data, str(event_record.get("requestId", "")))
+
+
+func _filter_non_assistant_body_event_records(records: Array) -> Array:
+	var filtered_records: Array = []
+	for item: Variant in records:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var event_record: Dictionary = item as Dictionary
+		var event_name: String = str(event_record.get("event", ""))
+		if event_name.begins_with("tool."):
+			continue
+		if event_name.begins_with("ai.thinking."):
+			continue
+
+		filtered_records.append(event_record)
+
+	return filtered_records
+
+
+func _build_assistant_body_parts(records: Array, message_content: String, request_id: String) -> Array[Dictionary]:
+	var body_parts: Array[Dictionary] = []
+	for item: Variant in records:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var event_record: Dictionary = item as Dictionary
+		var event_name: String = str(event_record.get("event", ""))
+
+		var data_value: Variant = event_record.get("data", {})
+		if typeof(data_value) != TYPE_DICTIONARY:
+			continue
+
+		var event_data: Dictionary = (data_value as Dictionary).duplicate(true)
+		if not event_data.has("type"):
+			event_data["type"] = event_name
+		event_data["_eventRecordId"] = str(event_record.get("id", ""))
+		if event_name.begins_with("tool."):
+			_append_tool_event_to_body_parts(body_parts, event_data, request_id)
+		elif event_name == "ai.thinking.delta":
+			_append_thinking_event_to_body_parts(body_parts, str(event_data.get("text", "")), false)
+		elif event_name == "ai.thinking.done":
+			_append_thinking_event_to_body_parts(body_parts, "", true)
+
+	if not message_content.is_empty():
+		body_parts.append({
+			"type": "markdown",
+			"text": message_content
+		})
+
+	return body_parts
+
+
+func _append_tool_event_to_body_parts(body_parts: Array, event_data: Dictionary, request_id: String) -> void:
+	var tool_call_id: String = _get_scoped_tool_call_key(event_data, request_id)
+	for index: int in range(body_parts.size()):
+		var part_value: Variant = body_parts[index]
+		if typeof(part_value) != TYPE_DICTIONARY:
+			continue
+
+		var part: Dictionary = part_value as Dictionary
+		if str(part.get("type", "")) != "tool":
+			continue
+		if str(part.get("tool_call_id", "")) != tool_call_id:
+			continue
+
+		var events_value: Variant = part.get("events", [])
+		var events: Array = events_value as Array if typeof(events_value) == TYPE_ARRAY else []
+		if _does_event_list_have_record(events, str(event_data.get("_eventRecordId", ""))):
+			return
+
+		events.append(event_data.duplicate(true))
+		part["events"] = events
+		body_parts[index] = part
+		return
+
+	body_parts.append({
+		"type": "tool",
+		"tool_call_id": tool_call_id,
+		"events": [event_data.duplicate(true)]
+	})
+
+
+func _append_thinking_event_to_body_parts(body_parts: Array, delta_text: String, is_done: bool) -> void:
+	for index: int in range(body_parts.size() - 1, -1, -1):
+		var part_value: Variant = body_parts[index]
+		if typeof(part_value) != TYPE_DICTIONARY:
+			continue
+
+		var part: Dictionary = part_value as Dictionary
+		if str(part.get("type", "")) != "thinking":
+			continue
+		if bool(part.get("done", false)):
+			continue
+
+		if not delta_text.is_empty():
+			part["text"] = str(part.get("text", "")) + delta_text
+		if is_done:
+			part["done"] = true
+		body_parts[index] = part
+		return
+
+	body_parts.append({
+		"type": "thinking",
+		"text": delta_text,
+		"done": is_done
+	})
+
+
+func _does_event_list_have_record(events: Array, event_record_id: String) -> bool:
+	if event_record_id.is_empty():
+		return false
+
+	for event_value: Variant in events:
+		if typeof(event_value) != TYPE_DICTIONARY:
+			continue
+
+		var event_data: Dictionary = event_value as Dictionary
+		if str(event_data.get("_eventRecordId", "")) == event_record_id:
+			return true
+
+	return false
 
 
 func _append_timeline_entry(entry_type: String, request_id: String, content: String, preferred_entry_id: String = "", metadata: Dictionary = {}) -> String:
@@ -1796,6 +2238,37 @@ func _update_timeline_entry_content(entry_id: String, content: String) -> void:
 	var entry: Dictionary = timeline_entries[index]
 	entry["content"] = content
 	entry["height_estimate"] = _estimate_timeline_entry_height(str(entry.get("type", "")), content)
+	entry["height_actual"] = 0.0
+	timeline_entries[index] = entry
+	_mark_timeline_height_dirty(index)
+
+
+func _append_assistant_delta_to_timeline(entry_id: String, delta_text: String) -> void:
+	var index: int = _find_timeline_entry_index(entry_id)
+	if index < 0 or delta_text.is_empty():
+		return
+
+	var entry: Dictionary = timeline_entries[index]
+	var next_content: String = str(entry.get("content", "")) + delta_text
+	entry["content"] = next_content
+	var body_parts: Array = entry.get("body_parts", []) as Array
+	var should_add_markdown_part: bool = body_parts.is_empty()
+	if not should_add_markdown_part:
+		var last_part_value: Variant = body_parts[body_parts.size() - 1]
+		should_add_markdown_part = typeof(last_part_value) != TYPE_DICTIONARY or str((last_part_value as Dictionary).get("type", "")) != "markdown"
+
+	if should_add_markdown_part:
+		body_parts.append({
+			"type": "markdown",
+			"text": delta_text
+		})
+	else:
+		var part: Dictionary = body_parts[body_parts.size() - 1] as Dictionary
+		part["text"] = str(part.get("text", "")) + delta_text
+		body_parts[body_parts.size() - 1] = part
+
+	entry["body_parts"] = body_parts
+	entry["height_estimate"] = _estimate_timeline_entry_height(str(entry.get("type", "")), next_content)
 	entry["height_actual"] = 0.0
 	timeline_entries[index] = entry
 	_mark_timeline_height_dirty(index)
@@ -2045,7 +2518,13 @@ func _configure_timeline_entry_node(node: Node, entry: Dictionary, _index: int) 
 		if node.has_signal("resend_requested"):
 			node.connect("resend_requested", Callable(self, "_on_user_message_resend_requested"))
 	elif entry_type == "assistant":
-		node.call("setup", str(entry.get("content", "")), str(entry.get("started_at_utc", "")), str(entry.get("completed_at_utc", "")))
+		node.call(
+			"setup",
+			str(entry.get("content", "")),
+			str(entry.get("started_at_utc", "")),
+			str(entry.get("completed_at_utc", "")),
+			entry.get("body_parts", [])
+		)
 	elif entry_type == "thinking":
 		node.call("setup_thinking")
 		var content: String = str(entry.get("content", ""))
@@ -2270,8 +2749,7 @@ func _flush_pending_assistant_delta() -> void:
 	var should_follow_bottom: bool = _should_follow_timeline_updates()
 	var delta_text: String = pending_assistant_delta_text
 	pending_assistant_delta_text = ""
-	var next_content: String = _get_timeline_entry_content(active_assistant_entry_id) + delta_text
-	_update_timeline_entry_content(active_assistant_entry_id, next_content)
+	_append_assistant_delta_to_timeline(active_assistant_entry_id, delta_text)
 
 	active_assistant_item = rendered_entry_nodes.get(active_assistant_entry_id, null) as Node
 	if active_assistant_item != null:
@@ -2289,7 +2767,10 @@ func _show_response_error(message: Dictionary) -> void:
 		error_message = str(error_dictionary.get("message", error_message))
 
 	if active_assistant_item != null:
-		active_assistant_item.call("append_delta", "\n\n后端返回错误：%s" % error_message)
+		var error_delta: String = "\n\n后端返回错误：%s" % error_message
+		if not active_assistant_entry_id.is_empty():
+			_append_assistant_delta_to_timeline(active_assistant_entry_id, error_delta)
+		active_assistant_item.call("append_delta", error_delta)
 		active_assistant_item.call("finish_message")
 	elif not active_assistant_entry_id.is_empty():
 		_update_timeline_entry_content(active_assistant_entry_id, _get_timeline_entry_content(active_assistant_entry_id) + "\n\n后端返回错误：%s" % error_message)
@@ -2321,18 +2802,10 @@ func _add_system_tool_item(title_text: String, detail_text: String) -> void:
 func _add_tool_event(event_data: Dictionary) -> void:
 	_show_background_context_viewer()
 	var should_follow_bottom: bool = _should_follow_timeline_updates()
-	if active_assistant_item != null:
-		active_assistant_item.call("finish_message")
-		active_assistant_item = null
-		active_assistant_entry_id = ""
-
+	_flush_pending_assistant_delta()
+	var item: Node = _append_active_assistant_tool_event(event_data, true)
 	var tool_call_id: String = _get_scoped_tool_call_key(event_data, active_stream_request_id)
-	var entry_id: String = _append_tool_event_to_timeline(event_data, active_stream_request_id)
-	var item: Node = rendered_entry_nodes.get(entry_id, null) as Node
 	if item != null:
-		var entry_index: int = _find_timeline_entry_index(entry_id)
-		if entry_index >= 0:
-			_setup_tool_node_from_entry(item, timeline_entries[entry_index])
 		tool_items_by_call_id[tool_call_id] = item
 
 	_schedule_timeline_render(should_follow_bottom)
@@ -2347,13 +2820,90 @@ func _append_tool_event(event_data: Dictionary) -> void:
 		_add_tool_event(event_data)
 		return
 
-	_append_tool_event_to_timeline(event_data, active_stream_request_id)
-	var item: Node = rendered_entry_nodes.get(entry_id, null) as Node
+	var item: Node
+	if entry_id == active_assistant_entry_id:
+		item = _append_active_assistant_tool_event(event_data, false)
+	else:
+		_append_tool_event_to_timeline(event_data, active_stream_request_id)
+		item = rendered_entry_nodes.get(entry_id, null) as Node
 	if item != null:
-		item.call("append_tool_event", event_data)
+		if entry_id != active_assistant_entry_id:
+			item.call("append_tool_event", event_data)
 		_scroll_to_bottom_if_following(should_follow_bottom)
 
 	_schedule_timeline_render(should_follow_bottom)
+
+
+func _append_active_assistant_tool_event(event_data: Dictionary, create_if_missing: bool) -> Node:
+	_ensure_active_assistant_item()
+	if active_assistant_entry_id.is_empty():
+		return null
+
+	var scoped_tool_call_id: String = _get_scoped_tool_call_key(event_data, active_stream_request_id)
+	_append_assistant_tool_event_to_timeline(active_assistant_entry_id, event_data, active_stream_request_id)
+	active_tool_entry_ids_by_call_id[scoped_tool_call_id] = active_assistant_entry_id
+
+	active_assistant_item = rendered_entry_nodes.get(active_assistant_entry_id, null) as Node
+	if active_assistant_item == null:
+		return null
+
+	var local_tool_call_id: String = _get_tool_call_key(event_data)
+	var item: Node = active_assistant_item.call("get_tool_item", local_tool_call_id) as Node
+	if item == null and create_if_missing:
+		item = active_assistant_item.call("add_tool_event", event_data) as Node
+	elif item != null:
+		item.call("append_tool_event", event_data)
+	else:
+		item = active_assistant_item.call("add_tool_event", event_data) as Node
+
+	return item
+
+
+func _append_assistant_tool_event_to_timeline(entry_id: String, event_data: Dictionary, request_id: String) -> void:
+	var index: int = _find_timeline_entry_index(entry_id)
+	if index < 0:
+		return
+
+	var entry: Dictionary = timeline_entries[index]
+	var body_parts: Array = entry.get("body_parts", []) as Array
+	_append_tool_event_to_body_parts(body_parts, event_data, request_id)
+	entry["body_parts"] = body_parts
+	entry["height_actual"] = 0.0
+	timeline_entries[index] = entry
+	_mark_timeline_height_dirty(index)
+
+
+func _ensure_active_assistant_thinking_item() -> Node:
+	_ensure_active_assistant_item()
+	if active_assistant_entry_id.is_empty():
+		return null
+
+	if active_thinking_entry_id.is_empty():
+		active_thinking_entry_id = "thinking:%s:%d" % [active_stream_request_id, Time.get_ticks_msec()]
+		_append_assistant_thinking_to_timeline(active_assistant_entry_id, "", false)
+
+	active_assistant_item = rendered_entry_nodes.get(active_assistant_entry_id, null) as Node
+	if active_assistant_item == null:
+		return null
+
+	var item: Node = active_assistant_item.call("get_thinking_item") as Node
+	if item == null:
+		item = active_assistant_item.call("add_thinking") as Node
+	return item
+
+
+func _append_assistant_thinking_to_timeline(entry_id: String, delta_text: String, is_done: bool) -> void:
+	var index: int = _find_timeline_entry_index(entry_id)
+	if index < 0:
+		return
+
+	var entry: Dictionary = timeline_entries[index]
+	var body_parts: Array = entry.get("body_parts", []) as Array
+	_append_thinking_event_to_body_parts(body_parts, delta_text, is_done)
+	entry["body_parts"] = body_parts
+	entry["height_actual"] = 0.0
+	timeline_entries[index] = entry
+	_mark_timeline_height_dirty(index)
 
 
 func _append_thinking_event(delta_text: String) -> void:
@@ -2363,7 +2913,8 @@ func _append_thinking_event(delta_text: String) -> void:
 	_show_background_context_viewer()
 	if active_thinking_entry_id.is_empty():
 		var should_follow_bottom: bool = _should_follow_timeline_updates()
-		active_thinking_entry_id = _append_timeline_entry("thinking", active_stream_request_id, "", "thinking:%s" % active_stream_request_id)
+		_flush_pending_assistant_delta()
+		active_thinking_item = _ensure_active_assistant_thinking_item()
 		_schedule_timeline_render(should_follow_bottom)
 
 	pending_thinking_delta_text += delta_text
@@ -2397,8 +2948,13 @@ func _flush_pending_thinking_delta() -> void:
 	var should_follow_bottom: bool = _should_follow_timeline_updates()
 	var delta_text: String = pending_thinking_delta_text
 	pending_thinking_delta_text = ""
-	_update_timeline_entry_content(active_thinking_entry_id, _get_timeline_entry_content(active_thinking_entry_id) + delta_text)
-	active_thinking_item = rendered_entry_nodes.get(active_thinking_entry_id, null) as Node
+	if not active_assistant_entry_id.is_empty():
+		_append_assistant_thinking_to_timeline(active_assistant_entry_id, delta_text, false)
+	active_assistant_item = rendered_entry_nodes.get(active_assistant_entry_id, null) as Node
+	if active_assistant_item != null:
+		active_thinking_item = active_assistant_item.call("get_thinking_item") as Node
+		if active_thinking_item == null:
+			active_thinking_item = active_assistant_item.call("add_thinking") as Node
 	if active_thinking_item != null:
 		active_thinking_item.call("append_thinking_delta", delta_text)
 
@@ -2435,6 +2991,8 @@ func _show_approval_dialog(event_data: Dictionary) -> void:
 		return
 
 	pending_approval_id = next_approval_id
+	if active_queue_message_id > 0:
+		_set_queue_message_status(active_queue_message_id, MESSAGE_QUEUE_STATUS_APPROVAL)
 	var tool_name: String = str(event_data.get("toolName", event_data.get("llmToolName", "")))
 	approval_title_label.text = "需要审批：%s" % _localize_tool_name_for_display(tool_name)
 	approval_description_label.text = "\n".join([
@@ -2444,6 +3002,7 @@ func _show_approval_dialog(event_data: Dictionary) -> void:
 		_format_approval_args_preview(event_data.get("args", {}))
 	])
 	approval_dialog.visible = true
+	_update_send_state()
 
 
 func _show_first_pending_approval(result_dictionary: Dictionary) -> void:
@@ -2645,15 +3204,37 @@ func _format_relative_time(timestamp: String) -> String:
 	return timestamp.replace("T", " ").replace("Z", "")
 
 
-func _set_streaming_state(is_streaming: bool) -> void:
-	send_button.visible = not is_streaming
-	stop_button.visible = is_streaming
+func _set_streaming_state(_is_streaming: bool) -> void:
 	_update_send_state()
+
+
+func _has_message_draft() -> bool:
+	return not text_edit.text.strip_edges().is_empty()
+
+
+func _should_show_send_button(is_streaming: bool, has_message_draft: bool) -> bool:
+	if not is_streaming:
+		return true
+
+	return has_message_draft
 
 
 func _update_send_state() -> void:
 	var is_streaming: bool = not active_stream_id.is_empty()
-	send_button.disabled = not socket_ready or is_streaming
+	var has_message_draft: bool = _has_message_draft()
+	var has_pending_queue: bool = _has_pending_queued_messages()
+	var should_show_send_button: bool = _should_show_send_button(is_streaming, has_message_draft)
+	send_button.visible = should_show_send_button
+	stop_button.visible = is_streaming and not should_show_send_button
+	send_button.disabled = not text_edit.visible or (not has_message_draft and not has_pending_queue)
+	if not socket_ready:
+		send_button.tooltip_text = "Queue message until reconnected"
+	elif is_streaming or not pending_approval_id.is_empty():
+		send_button.tooltip_text = "Queue message"
+	elif _has_pending_queued_messages():
+		send_button.tooltip_text = "Send next queued message"
+	else:
+		send_button.tooltip_text = "Send"
 	stop_button.disabled = not socket_ready or not is_streaming
 	create_new_session_button.visible = socket_ready
 

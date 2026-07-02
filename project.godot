@@ -10,7 +10,7 @@ config_version=5
 
 [application]
 
-config/name="FMODExample"
+config/name="Daedalus"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="uid://bncn7hlb3xcwf"
 
@@ -26,7 +26,7 @@ project/assembly_name="FMODExample"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/godot_gif/plugin.cfg")
+enabled=PackedStringArray("res://addons/godot_daedalus/plugin.cfg", "res://addons/godot_gif/plugin.cfg")
 
 [input]
 

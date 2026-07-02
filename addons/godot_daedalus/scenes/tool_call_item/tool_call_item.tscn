@@ -1,14 +1,6 @@
 [gd_scene format=3 uid="uid://c2a5o7qi58fus"]
 
 [ext_resource type="Script" uid="uid://d02kn1dqtxr5r" path="res://addons/godot_daedalus/scripts/tool_call_item/tool_call_item.gd" id="1_ujkjy"]
-[ext_resource type="PackedScene" uid="uid://dwi5h81jkortw" path="res://addons/godot_daedalus/scenes/tool_call_item/tool_read_file_item.tscn" id="2_lh7je"]
-[ext_resource type="PackedScene" uid="uid://c0all82wnhv1l" path="res://addons/godot_daedalus/scenes/tool_call_item/tool_write_file_item.tscn" id="3_rew6j"]
-[ext_resource type="PackedScene" uid="uid://c1ougymen6yqh" path="res://addons/godot_daedalus/scenes/tool_call_item/tool_terminal_item.tscn" id="4_ewoiq"]
-[ext_resource type="PackedScene" uid="uid://b2qcnd4eg8gwd" path="res://addons/godot_daedalus/scenes/tool_call_item/tool_scene_edit_item.tscn" id="5_0ec1k"]
-[ext_resource type="PackedScene" uid="uid://c0fteh4alx02y" path="res://addons/godot_daedalus/scenes/tool_call_item/tool_approval_item.tscn" id="6_lh7je"]
-[ext_resource type="PackedScene" uid="uid://bc6odrlupcfyr" path="res://addons/godot_daedalus/scenes/tool_call_item/thinking_item.tscn" id="6_wcc7d"]
-[ext_resource type="PackedScene" uid="uid://b5esov6oww3y3" path="res://addons/godot_daedalus/scenes/tool_call_item/tool_unknown_item.tscn" id="7_kj4h1"]
-[ext_resource type="PackedScene" uid="uid://dxmloi863owr8" path="res://addons/godot_daedalus/scenes/tool_call_item/tool_search_item.tscn" id="9_rew6j"]
 
 [node name="ToolCallItem" type="MarginContainer" unique_id=329819501]
 offset_right = 682.0
@@ -18,8 +10,11 @@ script = ExtResource("1_ujkjy")
 
 [node name="FoldableContainer" type="FoldableContainer" parent="." unique_id=1442751881]
 layout_mode = 2
+folded = true
 title = "Steps"
+title_text_overrun_behavior = 4
 
 [node name="ItemContainer" type="VBoxContainer" parent="FoldableContainer" unique_id=814797616]
 unique_name_in_owner = true
+visible = false
 layout_mode = 2

@@ -1,12 +1,14 @@
 [gd_scene format=3 uid="uid://c3s4jlxtm21ci"]
 
 [ext_resource type="Script" uid="uid://ddqwn6jrvpdnp" path="res://addons/godot_daedalus/scripts/assistant_markdown_item.gd" id="1_assistant"]
-[ext_resource type="Theme" uid="uid://dhartxld7pqyb" path="res://addons/godot_daedalus/assets/markdown_theme.tres" id="2_g8qxc"]
 [ext_resource type="Texture2D" uid="uid://d1k8gg5h7wvvv" path="res://addons/godot_daedalus/assets/icons/copy.svg" id="3_rhu02"]
 
 [node name="AssistantMarkdownItem" type="MarginContainer" unique_id=6800614]
-offset_right = 711.0
-offset_bottom = 36.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 theme_override_constants/margin_right = 16
 script = ExtResource("1_assistant")
 
@@ -29,17 +31,6 @@ layout_mode = 2
 [node name="BodyContainer" type="VBoxContainer" parent="VBoxContainer" unique_id=1596925126]
 unique_name_in_owner = true
 layout_mode = 2
-
-[node name="MarkdownLabel" type="MarkdownLabel" parent="VBoxContainer" unique_id=532096732]
-text = "Assistant Markdown"
-content_margin = 8
-context_menu_enabled = true
-streaming_enabled = true
-deferred_layout_enabled = true
-fit_content = true
-unique_name_in_owner = true
-layout_mode = 2
-theme = ExtResource("2_g8qxc")
 
 [node name="FooterContainer" type="HBoxContainer" parent="VBoxContainer" unique_id=120999232]
 unique_name_in_owner = true
